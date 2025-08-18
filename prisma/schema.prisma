@@ -1,0 +1,272 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+enum UserRole {
+  GUEST
+  STANDARD
+  PRIMARY
+  ADMIN
+}
+
+enum MembershipType {
+  A1_AGENCY
+  A2_BRANCH
+  A3_ASSOCIATE
+  STERLING_PARTNER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String?
+  role          UserRole  @default(STANDARD)
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  agency        Agency?   @relation(fields: [agencyId], references: [id])
+  agencyId      String?
+  
+  activities    Activity[]
+  files         File[]
+  tasks         Task[]
+}
+
+model Agency {
+  id              String           @id @default(cuid())
+  memberNumber    String           @unique
+  name            String
+  email           String
+  phone           String?
+  address         String?
+  city            String?
+  state           String?
+  zipCode         String?
+  website         String?
+  
+  membershipType  MembershipType
+  membershipLevel Int?             // 1-4, 5-9, 10-19, 20-49, 50+
+  status          MembershipStatus @default(PENDING)
+  joinDate        DateTime         @default(now())
+  renewalDate     DateTime?
+  
+  // Relationships
+  parentAgency    Agency?          @relation("AgencyBranches", fields: [parentAgencyId], references: [id])
+  parentAgencyId  String?
+  branches        Agency[]         @relation("AgencyBranches")
+  
+  users           User[]
+  payments        Payment[]
+  events          EventRegistration[]
+  documents       Document[]
+  activities      Activity[]
+  tasks           Task[]
+  customFields    CustomField[]
+  tags            Tag[]
+  
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  agency          Agency        @relation(fields: [agencyId], references: [id])
+  agencyId        String
+  
+  amount          Float
+  status          PaymentStatus @default(PENDING)
+  dueDate         DateTime
+  paidDate        DateTime?
+  paymentMethod   String?
+  transactionId   String?
+  invoiceNumber   String        @unique
+  
+  description     String?
+  notes           String?
+  
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model Event {
+  id              String              @id @default(cuid())
+  title           String
+  description     String?
+  type            String              // Conference, Education, Webinar, etc.
+  
+  startDate       DateTime
+  endDate         DateTime
+  location        String?
+  virtualUrl      String?
+  
+  capacity        Int?
+  price           Float?
+  earlyBirdPrice  Float?
+  earlyBirdDate   DateTime?
+  
+  registrations   EventRegistration[]
+  sponsors        Sponsor[]
+  
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+}
+
+model EventRegistration {
+  id              String    @id @default(cuid())
+  event           Event     @relation(fields: [eventId], references: [id])
+  eventId         String
+  agency          Agency    @relation(fields: [agencyId], references: [id])
+  agencyId        String
+  
+  attendeeName    String
+  attendeeEmail   String
+  attendeePhone   String?
+  
+  registeredAt    DateTime  @default(now())
+  status          String    @default("registered")
+  paymentStatus   PaymentStatus @default(PENDING)
+  amountPaid      Float?
+  
+  notes           String?
+  
+  @@unique([eventId, attendeeEmail])
+}
+
+model Document {
+  id              String    @id @default(cuid())
+  agency          Agency    @relation(fields: [agencyId], references: [id])
+  agencyId        String
+  
+  fileName        String
+  fileUrl         String
+  fileSize        Int
+  mimeType        String
+  category        String?
+  
+  uploadedBy      String
+  uploadedAt      DateTime  @default(now())
+  
+  description     String?
+  tags            String[]
+}
+
+model File {
+  id              String    @id @default(cuid())
+  user            User      @relation(fields: [userId], references: [id])
+  userId          String
+  
+  fileName        String
+  blobUrl         String
+  size            Int
+  type            String
+  
+  createdAt       DateTime  @default(now())
+}
+
+model Activity {
+  id              String    @id @default(cuid())
+  agency          Agency?   @relation(fields: [agencyId], references: [id])
+  agencyId        String?
+  user            User?     @relation(fields: [userId], references: [id])
+  userId          String?
+  
+  type            String    // login, logout, profile_update, payment, registration, etc.
+  description     String
+  metadata        Json?
+  
+  createdAt       DateTime  @default(now())
+}
+
+model Task {
+  id              String    @id @default(cuid())
+  agency          Agency    @relation(fields: [agencyId], references: [id])
+  agencyId        String
+  assignedTo      User?     @relation(fields: [assignedToId], references: [id])
+  assignedToId    String?
+  
+  title           String
+  description     String?
+  dueDate         DateTime?
+  priority        String    @default("medium")
+  status          String    @default("pending")
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model CustomField {
+  id              String    @id @default(cuid())
+  agency          Agency    @relation(fields: [agencyId], references: [id])
+  agencyId        String
+  
+  fieldName       String
+  fieldValue      String
+  fieldType       String    @default("text")
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([agencyId, fieldName])
+}
+
+model Tag {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  agencies        Agency[]
+  
+  createdAt       DateTime  @default(now())
+}
+
+model Sponsor {
+  id              String    @id @default(cuid())
+  event           Event     @relation(fields: [eventId], references: [id])
+  eventId         String
+  
+  companyName     String
+  contactName     String?
+  contactEmail    String?
+  sponsorshipLevel String
+  amount          Float
+  
+  logo            String?
+  website         String?
+  description     String?
+  
+  createdAt       DateTime  @default(now())
+}
+
+model EmailTemplate {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  subject         String
+  body            String
+  category        String
+  
+  variables       String[]  // List of available variables like {{name}}, {{agency}}, etc.
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
