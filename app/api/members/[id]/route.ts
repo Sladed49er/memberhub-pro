@@ -1,52 +1,55 @@
 // app/api/members/[id]/route.ts
-import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
-import { prisma } from '@/lib/prisma'
+import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
 
 // GET single member
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { id } = await params;
+
     const member = await prisma.user.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         agency: true,
       },
-    })
+    });
 
     if (!member) {
-      return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+      return NextResponse.json({ error: "Member not found" }, { status: 404 });
     }
 
-    return NextResponse.json(member)
+    return NextResponse.json(member);
   } catch (error) {
-    console.error('Error fetching member:', error)
+    console.error("Error fetching member:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch member' },
+      { error: "Failed to fetch member" },
       { status: 500 }
-    )
+    );
   }
 }
 
 // UPDATE member
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json()
+    const { id } = await params;
+    const body = await request.json();
     const {
       firstName,
       lastName,
@@ -55,11 +58,11 @@ export async function PUT(
       membershipType,
       agencyId,
       status,
-    } = body
+    } = body;
 
     // Update member in database
     const updatedMember = await prisma.user.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         firstName,
         lastName,
@@ -73,67 +76,71 @@ export async function PUT(
       include: {
         agency: true,
       },
-    })
+    });
 
     // Log activity
     await prisma.activity.create({
       data: {
-        type: 'MEMBER_UPDATED',
+        type: "MEMBER_UPDATED",
         description: `Updated member: ${firstName} ${lastName}`,
         userId: userId,
       },
-    })
+    });
 
-    return NextResponse.json(updatedMember)
+    return NextResponse.json(updatedMember);
   } catch (error) {
-    console.error('Error updating member:', error)
+    console.error("Error updating member:", error);
     return NextResponse.json(
-      { error: 'Failed to update member' },
+      { error: "Failed to update member" },
       { status: 500 }
-    )
+    );
   }
 }
 
 // DELETE member
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const { id } = await params;
 
     // Get member info before deletion for activity log
     const member = await prisma.user.findUnique({
-      where: { id: params.id },
-    })
+      where: { id },
+    });
 
     if (!member) {
-      return NextResponse.json({ error: 'Member not found' }, { status: 404 })
+      return NextResponse.json({ error: "Member not found" }, { status: 404 });
     }
 
     // Delete member
     await prisma.user.delete({
-      where: { id: params.id },
-    })
+      where: { id },
+    });
 
     // Log activity
     await prisma.activity.create({
       data: {
-        type: 'MEMBER_DELETED',
-        description: `Deleted member: ${member.firstName || member.name || 'Unknown'}`,
+        type: "MEMBER_DELETED",
+        description: `Deleted member: ${
+          member.firstName || member.name || "Unknown"
+        }`,
         userId: userId,
       },
-    })
+    });
 
-    return NextResponse.json({ message: 'Member deleted successfully' })
+    return NextResponse.json({ message: "Member deleted successfully" });
   } catch (error) {
-    console.error('Error deleting member:', error)
+    console.error("Error deleting member:", error);
     return NextResponse.json(
-      { error: 'Failed to delete member' },
+      { error: "Failed to delete member" },
       { status: 500 }
-    )
+    );
   }
 }
