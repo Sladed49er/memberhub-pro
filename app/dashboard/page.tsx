@@ -1,3 +1,9 @@
+// ============================================
+// FILE: app/dashboard/page.tsx
+// PURPOSE: Main dashboard page with member management
+// COPY THIS ENTIRE FILE AND REPLACE YOUR EXISTING app/dashboard/page.tsx
+// ============================================
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -70,7 +76,18 @@ export default function Dashboard() {
   };
 
   const handleEditMember = (member: any) => {
-    setSelectedMember(member);
+    // Ensure member has all required fields for the form
+    const memberWithAllFields = {
+      ...member,
+      firstName: member.firstName || member.name?.split(" ")[0] || "",
+      lastName:
+        member.lastName || member.name?.split(" ").slice(1).join(" ") || "",
+      phone: member.phone || "",
+      membershipType: member.membershipType || "A1_AGENCY",
+      status: member.status || "ACTIVE",
+      agencyId: member.agencyId || member.agency?.id || "",
+    };
+    setSelectedMember(memberWithAllFields);
     setShowEditModal(true);
   };
 
