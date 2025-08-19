@@ -1,10 +1,16 @@
 // app/api/members/route.ts
 import { NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
 import { prisma } from '@/lib/prisma'
 
 // GET all members
 export async function GET(request: Request) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 10
     
@@ -31,41 +37,47 @@ export async function GET(request: Request) {
 // POST new member
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    
-    // First, check if agency exists or create it
-    let agency = await prisma.agency.findFirst({
-      where: { name: body.agencyName }
-    })
-    
-    if (!agency) {
-      // Generate a unique member number
-      const memberNumber = `AG${Date.now().toString().slice(-8)}`
-      
-      agency = await prisma.agency.create({
-        data: {
-          memberNumber,
-          name: body.agencyName,
-          email: body.email,
-          phone: body.phone || '',
-          membershipType: body.membershipType || 'A1_AGENCY',
-          membershipLevel: body.membershipLevel || 1,
-          status: 'ACTIVE'
-        }
-      })
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    
+
+    const body = await request.json()
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      membershipType,
+      agencyId,
+      status,
+    } = body
+
     // Create the user
     const member = await prisma.user.create({
       data: {
-        name: `${body.firstName} ${body.lastName}`,
-        email: body.email,
-        role: body.role || 'STANDARD',
-        agencyId: agency.id
+        firstName,
+        lastName,
+        name: `${firstName} ${lastName}`,
+        email,
+        phone,
+        membershipType: membershipType || 'A1_AGENCY',
+        status: status || 'ACTIVE',
+        role: 'AGENCY_USER', // Default role
+        agencyId,
       },
       include: {
         agency: true
       }
+    })
+
+    // Log activity
+    await prisma.activity.create({
+      data: {
+        type: 'MEMBER_CREATED',
+        description: `Created member: ${firstName} ${lastName}`,
+        userId: userId,
+      },
     })
     
     return NextResponse.json(member, { status: 201 })

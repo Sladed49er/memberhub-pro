@@ -12,6 +12,9 @@ enum UserRole {
   STANDARD
   PRIMARY
   ADMIN
+  SUPER_ADMIN
+  AGENCY_ADMIN
+  AGENCY_USER
 }
 
 enum MembershipType {
@@ -36,17 +39,23 @@ enum PaymentStatus {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String?
+  id            String           @id @default(cuid())
+  clerkId       String?          @unique // Link to Clerk user
+  email         String           @unique
+  name          String?          // Keep existing name field
+  firstName     String?          // Add new fields as optional
+  lastName      String?
+  phone         String?
   password      String?
-  role          UserRole  @default(STANDARD)
+  role          UserRole         @default(STANDARD)
+  membershipType MembershipType? 
+  status        MembershipStatus @default(ACTIVE)
   image         String?
   emailVerified DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
   
-  agency        Agency?   @relation(fields: [agencyId], references: [id])
+  agency        Agency?          @relation(fields: [agencyId], references: [id])
   agencyId      String?
   
   activities    Activity[]
@@ -55,39 +64,45 @@ model User {
 }
 
 model Agency {
-  id              String           @id @default(cuid())
-  memberNumber    String           @unique
-  name            String
-  email           String
-  phone           String?
-  address         String?
-  city            String?
-  state           String?
-  zipCode         String?
-  website         String?
+  id                  String           @id @default(cuid())
+  memberNumber        String?          @unique // Make optional to preserve data
+  name                String
+  email               String
+  phone               String?
+  address             String?
+  city                String?
+  state               String?
+  zipCode             String?
+  country             String?          @default("USA")
+  website             String?
   
-  membershipType  MembershipType
-  membershipLevel Int?             // 1-4, 5-9, 10-19, 20-49, 50+
-  status          MembershipStatus @default(PENDING)
-  joinDate        DateTime         @default(now())
-  renewalDate     DateTime?
+  membershipType      MembershipType?  // Keep but make optional
+  membershipLevel     Int?             // Keep existing field
+  
+  primaryContactName  String?
+  primaryContactEmail String?
+  primaryContactPhone String?
+  
+  status              MembershipStatus @default(PENDING)
+  joinDate            DateTime         @default(now())
+  renewalDate         DateTime?
   
   // Relationships
-  parentAgency    Agency?          @relation("AgencyBranches", fields: [parentAgencyId], references: [id])
-  parentAgencyId  String?
-  branches        Agency[]         @relation("AgencyBranches")
+  parentAgency        Agency?          @relation("AgencyBranches", fields: [parentAgencyId], references: [id])
+  parentAgencyId      String?
+  branches            Agency[]         @relation("AgencyBranches")
   
-  users           User[]
-  payments        Payment[]
-  events          EventRegistration[]
-  documents       Document[]
-  activities      Activity[]
-  tasks           Task[]
-  customFields    CustomField[]
-  tags            Tag[]
+  users               User[]           // This is the "members" relationship
+  payments            Payment[]
+  events              EventRegistration[]
+  documents           Document[]
+  activities          Activity[]
+  tasks               Task[]
+  customFields        CustomField[]
+  tags                Tag[]
   
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 }
 
 model Payment {
