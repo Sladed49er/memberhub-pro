@@ -1,64 +1,52 @@
-// app/api/agencies/[id]/route.ts
-import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
-import { prisma } from '@/lib/prisma'
+// app/api/agencies/route.ts
+import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
 
-// GET single agency with members
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+// GET all agencies - no params needed here
+export async function GET() {
   try {
-    const { userId } = await auth()
+    const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const agency = await prisma.agency.findUnique({
-      where: { id: params.id },
+    const agencies = await prisma.agency.findMany({
       include: {
         users: true,
-        events: true,
-        documents: true,
       },
-    })
+      orderBy: {
+        name: "asc",
+      },
+    });
 
-    if (!agency) {
-      return NextResponse.json({ error: 'Agency not found' }, { status: 404 })
-    }
-
-    // Add counts manually
-    const agencyWithCounts = {
+    // Transform to include count
+    const agenciesWithCount = agencies.map((agency) => ({
       ...agency,
       _count: {
         users: agency.users.length,
-        events: agency.events.length,
-        documents: agency.documents.length,
-      }
-    }
+      },
+    }));
 
-    return NextResponse.json(agencyWithCounts)
+    return NextResponse.json(agenciesWithCount);
   } catch (error) {
-    console.error('Error fetching agency:', error)
+    console.error("Error fetching agencies:", error);
     return NextResponse.json(
-      { error: 'Failed to fetch agency' },
+      { error: "Failed to fetch agencies" },
       { status: 500 }
-    )
+    );
   }
 }
 
-// UPDATE agency
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+// CREATE new agency
+export async function POST(request: Request) {
   try {
-    const { userId } = await auth()
+    const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json()
+    const body = await request.json();
     const {
       name,
       email,
@@ -72,11 +60,10 @@ export async function PUT(
       primaryContactName,
       primaryContactEmail,
       primaryContactPhone,
-      status,
-    } = body
+    } = body;
 
-    const updatedAgency = await prisma.agency.update({
-      where: { id: params.id },
+    // Create agency
+    const agency = await prisma.agency.create({
       data: {
         name,
         email,
@@ -85,84 +72,30 @@ export async function PUT(
         city,
         state,
         zipCode,
-        country,
+        country: country || "USA",
         website,
         primaryContactName,
         primaryContactEmail,
         primaryContactPhone,
-        status,
+        status: "ACTIVE",
       },
-    })
+    });
 
     // Log activity
     await prisma.activity.create({
       data: {
-        type: 'AGENCY_UPDATED',
-        description: `Updated agency: ${name}`,
+        type: "AGENCY_CREATED",
+        description: `Created agency: ${name}`,
         userId: userId,
       },
-    })
+    });
 
-    return NextResponse.json(updatedAgency)
+    return NextResponse.json(agency);
   } catch (error) {
-    console.error('Error updating agency:', error)
+    console.error("Error creating agency:", error);
     return NextResponse.json(
-      { error: 'Failed to update agency' },
+      { error: "Failed to create agency" },
       { status: 500 }
-    )
-  }
-}
-
-// DELETE agency
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const { userId } = await auth()
-    if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Check if agency has members
-    const agency = await prisma.agency.findUnique({
-      where: { id: params.id },
-      include: {
-        users: true
-      }
-    })
-
-    if (!agency) {
-      return NextResponse.json({ error: 'Agency not found' }, { status: 404 })
-    }
-
-    if (agency.users.length > 0) {
-      return NextResponse.json(
-        { error: 'Cannot delete agency with active members' },
-        { status: 400 }
-      )
-    }
-
-    // Delete agency
-    await prisma.agency.delete({
-      where: { id: params.id },
-    })
-
-    // Log activity
-    await prisma.activity.create({
-      data: {
-        type: 'AGENCY_DELETED',
-        description: `Deleted agency: ${agency.name}`,
-        userId: userId,
-      },
-    })
-
-    return NextResponse.json({ message: 'Agency deleted successfully' })
-  } catch (error) {
-    console.error('Error deleting agency:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete agency' },
-      { status: 500 }
-    )
+    );
   }
 }
