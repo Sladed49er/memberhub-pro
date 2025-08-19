@@ -1,8 +1,31 @@
 // app/page.tsx
+'use client'
+
 import Link from 'next/link'
-import { SignedIn, SignedOut } from '@clerk/nextjs'
+import { SignedIn, SignedOut, useUser } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 
 export default function Home() {
+  const { isSignedIn, user, isLoaded } = useUser()
+  const router = useRouter()
+
+  useEffect(() => {
+    // If user is signed in, redirect to dashboard
+    if (isLoaded && isSignedIn) {
+      router.push('/dashboard')
+    }
+  }, [isLoaded, isSignedIn, router])
+
+  // Show loading while checking auth
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center">
+        <div className="text-white text-xl">Loading...</div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500">
       <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
@@ -20,7 +43,7 @@ export default function Home() {
               >
                 Go to Dashboard →
               </Link>
-              <p className="text-white/60">Welcome back! Access your dashboard to manage members.</p>
+              <p className="text-white/60">Redirecting to dashboard...</p>
             </div>
           </SignedIn>
           
