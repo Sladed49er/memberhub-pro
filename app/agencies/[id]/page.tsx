@@ -1,410 +1,318 @@
 // app/agencies/[id]/page.tsx
+// View single agency page
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
-import Header from "@/components/Header";
+import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
-import {
-  Plus,
-  Edit,
-  Trash2,
-  Users,
-  Building2,
-  Mail,
-  Phone,
-  MapPin,
-  Globe,
-} from "lucide-react";
-
-interface Member {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  role: string;
-  status: string;
-  createdAt: string;
-  agencyId: string;
-}
 
 interface Agency {
   id: string;
   name: string;
   email: string;
-  phone: string | null;
-  address: string | null;
-  city: string | null;
-  state: string | null;
-  zipCode: string | null;
-  website: string | null;
-  primaryContactName: string | null;
-  primaryContactEmail: string | null;
-  primaryContactPhone: string | null;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+  website?: string;
+  membershipType?: string;
   status: string;
-  membershipType: string;
-  users: Member[];
-  _count: {
-    users: number;
-  };
+  primaryContactName?: string;
+  primaryContactEmail?: string;
+  primaryContactPhone?: string;
+  createdAt: string;
+  updatedAt: string;
+  users?: Array<{
+    id: string;
+    email: string;
+    firstName?: string;
+    lastName?: string;
+    role: string;
+  }>;
 }
 
-export default function AgencyDetailPage({
+export default function AgencyViewPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const resolvedParams = use(params);
+  const { user } = useUser();
   const router = useRouter();
-  const { user, isLoaded } = useUser();
   const [agency, setAgency] = useState<Agency | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [agencyId, setAgencyId] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
 
   const userRole = user?.unsafeMetadata?.role as string;
   const userAgencyId = user?.unsafeMetadata?.agencyId as string;
 
-  useEffect(() => {
-    async function getParams() {
-      const { id } = await params;
-      setAgencyId(id);
-    }
-    getParams();
-  }, [params]);
+  // Check permissions
+  const canView =
+    userRole === "SUPER_ADMIN" ||
+    (userRole === "ADMIN" && userAgencyId === resolvedParams.id) ||
+    (userRole === "PRIMARY" && userAgencyId === resolvedParams.id);
+
+  const canEdit =
+    userRole === "SUPER_ADMIN" ||
+    (userRole === "ADMIN" && userAgencyId === resolvedParams.id);
 
   useEffect(() => {
-    if (isLoaded && user && agencyId) {
-      fetchAgency();
+    if (!canView) {
+      setError("You do not have permission to view this agency");
+      setLoading(false);
+      return;
     }
-  }, [isLoaded, user, agencyId]);
+
+    fetchAgency();
+  }, [resolvedParams.id, canView]);
 
   const fetchAgency = async () => {
     try {
-      setLoading(true);
-      const response = await fetch(`/api/agencies/${agencyId}`);
+      const response = await fetch(`/api/agencies/${resolvedParams.id}`);
 
       if (!response.ok) {
-        if (response.status === 403) {
-          setError("You don't have permission to view this agency");
-          return;
-        }
-        throw new Error("Failed to fetch agency");
+        const data = await response.json();
+        throw new Error(data.error || "Failed to fetch agency");
       }
 
       const data = await response.json();
       setAgency(data);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      console.error("Error fetching agency:", err);
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteMember = async (memberId: string) => {
-    if (!confirm("Are you sure you want to remove this member?")) return;
-
-    try {
-      const response = await fetch(`/api/members/${memberId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete member");
-      }
-
-      // Refresh agency data
-      fetchAgency();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  if (!isLoaded) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="text-xl">Loading...</div>
-      </div>
-    );
-  }
-
-  // Check permissions
-  if (userRole === "AGENCY_ADMIN" && agencyId && agencyId !== userAgencyId) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <h1 className="text-2xl font-bold mb-4">Access Denied</h1>
-        <p className="text-gray-600">
-          You don't have permission to view this agency.
-        </p>
-        <Link href="/dashboard">
-          <Button className="mt-4">Back to Dashboard</Button>
-        </Link>
-      </div>
-    );
-  }
-
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <div className="text-xl">Loading agency details...</div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <h1 className="text-2xl font-bold mb-4">Error</h1>
-        <p className="text-red-600">{error}</p>
-        <Link href="/dashboard">
-          <Button className="mt-4">Back to Dashboard</Button>
-        </Link>
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-800">{error}</p>
+          <button
+            onClick={() => router.back()}
+            className="mt-4 text-red-600 underline"
+          >
+            Go back
+          </button>
+        </div>
       </div>
     );
   }
 
   if (!agency) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen">
-        <h1 className="text-2xl font-bold mb-4">Agency Not Found</h1>
-        <Link href="/dashboard">
-          <Button>Back to Dashboard</Button>
-        </Link>
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-yellow-800">Agency not found</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-
-      <div className="container mx-auto py-8 px-4">
-        {/* Agency Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <div className="flex justify-between items-start mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                <Building2 className="h-8 w-8 text-blue-600" />
-                {agency.name}
-              </h1>
-              <div className="flex items-center gap-4 mt-2">
-                <span
-                  className={`px-3 py-1 rounded-full text-sm font-medium ${
-                    agency.status === "ACTIVE"
-                      ? "bg-green-100 text-green-800"
-                      : agency.status === "INACTIVE"
-                      ? "bg-gray-100 text-gray-800"
-                      : "bg-red-100 text-red-800"
-                  }`}
-                >
-                  {agency.status}
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              {agency.name}
+            </h1>
+            <div className="flex items-center gap-4 mt-2">
+              <span
+                className={`px-3 py-1 text-sm rounded-full ${
+                  agency.status === "ACTIVE"
+                    ? "bg-green-100 text-green-800"
+                    : agency.status === "PENDING"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : agency.status === "SUSPENDED"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {agency.status}
+              </span>
+              {agency.membershipType && (
+                <span className="px-3 py-1 text-sm rounded-full bg-purple-100 text-purple-800">
+                  {agency.membershipType.replace(/_/g, " ")}
                 </span>
-                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                  {agency.membershipType.replace("_", " ")}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Link href={`/agencies/${agency.id}/edit`}>
-                <Button variant="outline">
-                  <Edit className="mr-2 h-4 w-4" />
-                  Edit Agency
-                </Button>
-              </Link>
-              {userRole === "SUPER_ADMIN" && (
-                <Button
-                  variant="destructive"
-                  onClick={async () => {
-                    if (
-                      confirm("Are you sure you want to delete this agency?")
-                    ) {
-                      try {
-                        const response = await fetch(
-                          `/api/agencies/${agency.id}`,
-                          {
-                            method: "DELETE",
-                          }
-                        );
-                        if (response.ok) {
-                          router.push("/agencies");
-                        }
-                      } catch (err) {
-                        alert("Failed to delete agency");
-                      }
-                    }
-                  }}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete Agency
-                </Button>
               )}
             </div>
           </div>
 
-          {/* Agency Details */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
-            {agency.email && (
-              <div className="flex items-center gap-2 text-gray-600">
-                <Mail className="h-4 w-4" />
-                <span>{agency.email}</span>
-              </div>
-            )}
-            {agency.phone && (
-              <div className="flex items-center gap-2 text-gray-600">
-                <Phone className="h-4 w-4" />
-                <span>{agency.phone}</span>
-              </div>
-            )}
-            {agency.address && (
-              <div className="flex items-center gap-2 text-gray-600">
-                <MapPin className="h-4 w-4" />
-                <span>{agency.address}</span>
-              </div>
-            )}
-            {agency.website && (
-              <div className="flex items-center gap-2 text-gray-600">
-                <Globe className="h-4 w-4" />
-                <a
-                  href={agency.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline"
-                >
-                  {agency.website}
-                </a>
-              </div>
-            )}
-          </div>
-
-          {/* Primary Contact */}
-          {agency.primaryContactName && (
-            <div className="mt-6 pt-6 border-t">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">
-                Primary Contact
-              </h3>
-              <div className="space-y-1 text-sm text-gray-600">
-                <p>{agency.primaryContactName}</p>
-                {agency.primaryContactEmail && (
-                  <p>{agency.primaryContactEmail}</p>
-                )}
-                {agency.primaryContactPhone && (
-                  <p>{agency.primaryContactPhone}</p>
-                )}
-              </div>
+          {canEdit && (
+            <div className="flex gap-2">
+              <Link href={`/agencies/${agency.id}/edit`}>
+                <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
+                  Edit Agency
+                </Button>
+              </Link>
+              <Link href="/agencies">
+                <Button variant="outline">Back to Agencies</Button>
+              </Link>
             </div>
           )}
         </div>
 
-        {/* Members Section */}
-        <div className="bg-white rounded-lg shadow-sm p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Users className="h-6 w-6 text-blue-600" />
-              Members ({agency._count?.users || 0})
+        {/* Agency Details */}
+        <div className="bg-white rounded-lg shadow-lg p-6 space-y-6">
+          {/* Contact Information */}
+          <div>
+            <h2 className="text-lg font-semibold mb-4 text-gray-900">
+              Contact Information
             </h2>
-            <Link href="/members/new">
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Member
-              </Button>
-            </Link>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-600">Email</p>
+                <p className="font-medium">{agency.email}</p>
+              </div>
+              {agency.phone && (
+                <div>
+                  <p className="text-sm text-gray-600">Phone</p>
+                  <p className="font-medium">{agency.phone}</p>
+                </div>
+              )}
+              {agency.website && (
+                <div>
+                  <p className="text-sm text-gray-600">Website</p>
+                  <a
+                    href={agency.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-purple-600 hover:text-purple-700"
+                  >
+                    {agency.website}
+                  </a>
+                </div>
+              )}
+            </div>
           </div>
 
-          {agency.users && agency.users.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Name
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Email
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Phone
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Role
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {agency.users.map((member) => (
-                    <tr key={member.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">
-                          {member.firstName} {member.lastName}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {member.email}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-500">
-                          {member.phone || "-"}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            member.role === "SUPER_ADMIN"
-                              ? "bg-purple-100 text-purple-800"
-                              : member.role === "AGENCY_ADMIN"
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-green-100 text-green-800"
-                          }`}
-                        >
-                          {member.role === "SUPER_ADMIN"
-                            ? "Super Admin"
-                            : member.role === "AGENCY_ADMIN"
-                            ? "Admin"
-                            : "Member"}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex gap-2">
-                          <Link href={`/members/${member.id}/edit`}>
-                            <Button variant="outline" size="sm">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => handleDeleteMember(member.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <Users className="mx-auto h-12 w-12 text-gray-400" />
-              <p className="mt-2 text-sm text-gray-500">
-                No members in this agency yet.
-              </p>
-              <Link href="/members/new">
-                <Button className="mt-4">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add First Member
-                </Button>
-              </Link>
+          {/* Address */}
+          {(agency.address ||
+            agency.city ||
+            agency.state ||
+            agency.zipCode) && (
+            <div>
+              <h2 className="text-lg font-semibold mb-4 text-gray-900">
+                Address
+              </h2>
+              <div className="text-gray-700">
+                {agency.address && <p>{agency.address}</p>}
+                {(agency.city || agency.state || agency.zipCode) && (
+                  <p>
+                    {agency.city && `${agency.city}, `}
+                    {agency.state && `${agency.state} `}
+                    {agency.zipCode}
+                  </p>
+                )}
+              </div>
             </div>
           )}
+
+          {/* Primary Contact */}
+          {(agency.primaryContactName ||
+            agency.primaryContactEmail ||
+            agency.primaryContactPhone) && (
+            <div>
+              <h2 className="text-lg font-semibold mb-4 text-gray-900">
+                Primary Contact
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {agency.primaryContactName && (
+                  <div>
+                    <p className="text-sm text-gray-600">Name</p>
+                    <p className="font-medium">{agency.primaryContactName}</p>
+                  </div>
+                )}
+                {agency.primaryContactEmail && (
+                  <div>
+                    <p className="text-sm text-gray-600">Email</p>
+                    <p className="font-medium">{agency.primaryContactEmail}</p>
+                  </div>
+                )}
+                {agency.primaryContactPhone && (
+                  <div>
+                    <p className="text-sm text-gray-600">Phone</p>
+                    <p className="font-medium">{agency.primaryContactPhone}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Agency Members */}
+          {agency.users && agency.users.length > 0 && (
+            <div>
+              <h2 className="text-lg font-semibold mb-4 text-gray-900">
+                Agency Members ({agency.users.length})
+              </h2>
+              <div className="bg-gray-50 rounded-lg overflow-hidden">
+                <table className="min-w-full">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        Name
+                      </th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        Email
+                      </th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                        Role
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {agency.users.map((member) => (
+                      <tr key={member.id}>
+                        <td className="px-4 py-2 text-sm text-gray-900">
+                          {member.firstName} {member.lastName}
+                        </td>
+                        <td className="px-4 py-2 text-sm text-gray-500">
+                          {member.email}
+                        </td>
+                        <td className="px-4 py-2 text-sm">
+                          <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800">
+                            {member.role}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Metadata */}
+          <div className="pt-4 border-t border-gray-200">
+            <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
+              <div>
+                <span className="font-medium">Created:</span>{" "}
+                {new Date(agency.createdAt).toLocaleDateString()}
+              </div>
+              <div>
+                <span className="font-medium">Last Updated:</span>{" "}
+                {new Date(agency.updatedAt).toLocaleDateString()}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
