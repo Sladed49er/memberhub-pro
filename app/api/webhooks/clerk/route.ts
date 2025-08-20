@@ -1,8 +1,4 @@
-// ============================================
-// FILE: app/api/webhooks/clerk/route.ts
-// PURPOSE: Simple webhook to auto-set user roles (without Svix for now)
-// ============================================
-
+// app/api/webhooks/clerk/route.ts
 import { NextResponse } from "next/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +17,7 @@ export async function POST(req: Request) {
       const email = email_addresses?.[0]?.email_address;
 
       // Check if user already has a role
-      if (unsafe_metadata?.role) {
+      if (unsafe_metadata?.role && unsafe_metadata.role !== "NOT_SET") {
         console.log("User already has role:", unsafe_metadata.role);
         return NextResponse.json({ message: "User already has role" });
       }
@@ -31,41 +27,34 @@ export async function POST(req: Request) {
         const clerk = await clerkClient();
 
         // Determine the role based on your business logic
-        let role = "AGENCY_USER"; // Default role
+        let role: any = "STANDARD"; // Default role - using 'any' to bypass TypeScript check
         let agencyId = null;
         let agencyName = null;
 
-        // Example: First user becomes Super Admin
-        const userCount = await prisma.user.count();
-        if (userCount === 0) {
-          role = "SUPER_ADMIN";
-          console.log("First user - assigning Super Admin role");
-        }
-        // Example: Check if email domain matches
-        else if (email?.endsWith("@netstarinc.com")) {
-          role = "AGENCY_ADMIN";
-          agencyId = "netstar-agency-001";
-          agencyName = "Netstar, Inc.";
-          console.log("Netstar email - assigning Agency Admin role");
-        }
-        // Example: Check if user's email is a primary contact for an agency
-        else if (email) {
-          const existingAgency = await prisma.agency.findFirst({
-            where: {
-              OR: [{ email: email }, { primaryContactEmail: email }],
-            },
+        // Check if user exists in database with a role
+        if (email) {
+          const existingUser = await prisma.user.findUnique({
+            where: { email },
+            include: { agency: true },
           });
 
-          if (existingAgency) {
-            role = "AGENCY_ADMIN";
-            agencyId = existingAgency.id;
-            agencyName = existingAgency.name;
-            console.log("Found matching agency - assigning Agency Admin role");
+          if (existingUser) {
+            role = existingUser.role;
+            agencyId = existingUser.agencyId;
+            agencyName = existingUser.agency?.name || null;
+            console.log(`Found existing user in database with role: ${role}`);
+          } else {
+            // First user becomes Super Admin
+            const userCount = await prisma.user.count();
+            if (userCount === 0) {
+              role = "SUPER_ADMIN";
+              console.log("First user - assigning Super Admin role");
+            }
           }
         }
 
-        // Update user metadata with role
-        await clerk.users.updateUser(id, {
+        // Update Clerk user metadata
+        await clerk.users.updateUserMetadata(id, {
           unsafeMetadata: {
             role,
             agencyId,
@@ -73,41 +62,95 @@ export async function POST(req: Request) {
           },
         });
 
-        // Create user in database
-        await prisma.user.create({
-          data: {
-            clerkId: id,
-            email: email || "",
-            firstName: first_name || "",
-            lastName: last_name || "",
-            name: `${first_name || ""} ${last_name || ""}`.trim(),
-            role: role as any, // Type assertion to fix TypeScript error
-            agencyId,
-            status: "ACTIVE",
-          },
-        });
+        console.log(`Updated user ${id} with role: ${role}`);
 
-        console.log(`User ${email} created with role: ${role}`);
+        // If user doesn't exist in database, create them
+        if (email && first_name && last_name) {
+          const existingUser = await prisma.user.findUnique({
+            where: { email },
+          });
+
+          if (!existingUser) {
+            // Only create if they have an agency assignment or are super admin
+            if (role === "SUPER_ADMIN" || agencyId) {
+              await prisma.user.create({
+                data: {
+                  clerkId: id, // Changed from clerkUserId to clerkId
+                  email,
+                  firstName: first_name,
+                  lastName: last_name,
+                  role,
+                  agencyId,
+                },
+              });
+              console.log(`Created user in database: ${email}`);
+            }
+          }
+        }
+
         return NextResponse.json({
-          success: true,
-          message: `User assigned role: ${role}`,
+          message: "User role updated successfully",
+          role,
         });
       } catch (error) {
-        console.error("Error processing webhook:", error);
+        console.error("Error updating user metadata:", error);
         return NextResponse.json(
-          { error: "Failed to process webhook" },
+          { error: "Failed to update user metadata" },
           { status: 500 }
         );
       }
     }
 
-    // Return success for other event types
-    return NextResponse.json({ received: true });
+    // Handle user.updated event
+    if (payload.type === "user.updated") {
+      const { id, email_addresses, first_name, last_name } = payload.data;
+      const email = email_addresses?.[0]?.email_address;
+
+      if (email) {
+        // Update user in database if they exist
+        const existingUser = await prisma.user.findUnique({
+          where: { clerkId: id }, // Changed from clerkUserId to clerkId
+        });
+
+        if (existingUser) {
+          await prisma.user.update({
+            where: { clerkId: id }, // Changed from clerkUserId to clerkId
+            data: {
+              email,
+              firstName: first_name || existingUser.firstName,
+              lastName: last_name || existingUser.lastName,
+            },
+          });
+          console.log(`Updated user in database: ${email}`);
+        }
+      }
+
+      return NextResponse.json({ message: "User updated successfully" });
+    }
+
+    // Handle user.deleted event
+    if (payload.type === "user.deleted") {
+      const { id } = payload.data;
+
+      // Delete user from database
+      try {
+        await prisma.user.delete({
+          where: { clerkId: id }, // Changed from clerkUserId to clerkId
+        });
+        console.log(`Deleted user from database: ${id}`);
+      } catch (error) {
+        console.log(`User not found in database: ${id}`);
+      }
+
+      return NextResponse.json({ message: "User deleted successfully" });
+    }
+
+    return NextResponse.json({ message: "Webhook processed" });
   } catch (error) {
     console.error("Webhook error:", error);
     return NextResponse.json(
       { error: "Webhook processing failed" },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }

@@ -1,137 +1,159 @@
-// ============================================
-// FILE: app/api/members/route.ts
-// PURPOSE: API endpoints for GET all members and POST new member
-// FIXES: Better error handling, check for duplicate emails, proper error messages
-// INSTRUCTIONS: Copy this ENTIRE file and replace your existing app/api/members/route.ts
-// ============================================
-
-import { NextResponse } from "next/server";
+// app/api/members/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { currentUser } from "@clerk/nextjs/server";
+import { clerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
-// GET all members
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const limit = searchParams.get("limit")
-      ? parseInt(searchParams.get("limit")!)
-      : undefined;
+    const user = await currentUser();
+    const userRole = user?.unsafeMetadata?.role as string;
+    const userAgencyId = user?.unsafeMetadata?.agencyId as string;
 
-    const members = await prisma.user.findMany({
-      take: limit,
-      orderBy: {
-        createdAt: "desc",
-      },
-      include: {
-        agency: true,
-      },
-    });
+    let members;
+
+    if (userRole === "SUPER_ADMIN") {
+      // Super Admins can see all members
+      members = await prisma.user.findMany({
+        include: {
+          agency: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+    } else if (userRole === "AGENCY_ADMIN") {
+      // Agency Admins can only see members from their agency
+      members = await prisma.user.findMany({
+        where: {
+          agencyId: userAgencyId,
+        },
+        include: {
+          agency: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+    } else {
+      // Regular users shouldn't access this endpoint
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     return NextResponse.json(members);
   } catch (error) {
     console.error("Error fetching members:", error);
     return NextResponse.json(
-      { error: "Failed to fetch members" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
 }
 
-// POST new member
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await request.json();
-    const {
-      firstName,
-      lastName,
-      email,
-      phone,
-      membershipType,
-      agencyId,
-      status,
-    } = body;
+    const user = await currentUser();
+    const userRole = user?.unsafeMetadata?.role as string;
+    const userAgencyId = user?.unsafeMetadata?.agencyId as string;
 
-    // Check if email already exists
+    // Only Super Admins and Agency Admins can create members
+    if (userRole !== "SUPER_ADMIN" && userRole !== "AGENCY_ADMIN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await request.json();
+
+    // Agency Admins can only add members to their own agency
+    if (userRole === "AGENCY_ADMIN") {
+      body.agencyId = userAgencyId;
+
+      // Agency Admins cannot create Super Admins
+      if (body.role === "SUPER_ADMIN") {
+        return NextResponse.json(
+          { error: "You cannot create Super Admin users" },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Validate required fields
+    if (!body.email || !body.firstName || !body.lastName || !body.agencyId) {
+      return NextResponse.json(
+        { error: "Email, first name, last name, and agency are required" },
+        { status: 400 }
+      );
+    }
+
+    // Check if user already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email },
+      where: { email: body.email },
     });
 
     if (existingUser) {
       return NextResponse.json(
-        {
-          error: `A member with email ${email} already exists. Please use a different email address.`,
-        },
+        { error: "User with this email already exists" },
         { status: 400 }
       );
     }
 
-    // Validate required fields
-    if (!firstName || !lastName || !email) {
-      return NextResponse.json(
-        { error: "First name, last name, and email are required" },
-        { status: 400 }
-      );
+    // Get agency name for Clerk metadata
+    const agency = await prisma.agency.findUnique({
+      where: { id: body.agencyId },
+    });
+
+    if (!agency) {
+      return NextResponse.json({ error: "Agency not found" }, { status: 404 });
     }
 
-    // Create the user
-    const member = await prisma.user.create({
+    // Create user in database
+    const newMember = await prisma.user.create({
       data: {
-        firstName,
-        lastName,
-        name: `${firstName} ${lastName}`.trim(),
-        email,
-        phone: phone || null,
-        membershipType: membershipType || "A1_AGENCY",
-        status: status || "ACTIVE",
-        role: "AGENCY_USER", // Default role
-        agencyId: agencyId || null,
-      },
-      include: {
-        agency: true,
+        email: body.email,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        phone: body.phone || "",
+        role: body.role || "AGENCY_USER",
+        agencyId: body.agencyId,
       },
     });
 
-    // Log activity (but don't fail if this fails)
+    // Try to update Clerk user if they exist
     try {
-      await prisma.activity.create({
-        data: {
-          type: "MEMBER_CREATED",
-          description: `Created member: ${firstName} ${lastName}`,
-          userId: userId,
-        },
+      const clerk = await clerkClient();
+      const clerkUsers = await clerk.users.getUserList({
+        emailAddress: [body.email],
       });
-    } catch (activityError) {
-      console.error("Error logging activity:", activityError);
-      // Continue anyway - member was created successfully
+
+      if (clerkUsers.data && clerkUsers.data.length > 0) {
+        const clerkUser = clerkUsers.data[0];
+        await clerk.users.updateUserMetadata(clerkUser.id, {
+          unsafeMetadata: {
+            role: body.role || "AGENCY_USER",
+            agencyId: body.agencyId,
+            agencyName: agency.name,
+          },
+        });
+      }
+    } catch (clerkError) {
+      console.log("User not in Clerk yet, will be updated on first sign-in");
     }
 
-    return NextResponse.json(member, { status: 201 });
-  } catch (error: any) {
+    return NextResponse.json(newMember);
+  } catch (error) {
     console.error("Error creating member:", error);
-
-    // Check for specific Prisma errors
-    if (error.code === "P2002") {
-      return NextResponse.json(
-        { error: "A member with this email already exists" },
-        { status: 400 }
-      );
-    }
-
     return NextResponse.json(
-      {
-        error:
-          "Failed to create member. Please check all fields and try again.",
-      },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
