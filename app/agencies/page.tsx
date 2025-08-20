@@ -14,26 +14,43 @@ import {
   MapPin,
   Users,
 } from "lucide-react";
+import { prisma } from "@/lib/prisma";
 
 async function getAgencies(userRole: string, agencyId?: string) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
   try {
-    const response = await fetch(`${baseUrl}/api/agencies`, {
-      cache: "no-store",
-    });
+    let agencies: any[] = [];
 
-    if (response.ok) {
-      const agencies = await response.json();
-
-      // For Agency Admins, filter to only their agency
-      if ((userRole === "ADMIN" || userRole === "AGENCY_ADMIN") && agencyId) {
-        return agencies.filter((agency: any) => agency.id === agencyId);
-      }
-
-      return agencies;
+    if (userRole === "SUPER_ADMIN") {
+      // Super Admins can see all agencies - fetch directly from database
+      agencies = await prisma.agency.findMany({
+        include: {
+          _count: {
+            select: { users: true },
+          },
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+    } else if (
+      (userRole === "ADMIN" || userRole === "AGENCY_ADMIN") &&
+      agencyId
+    ) {
+      // Agency Admins can only see their own agency
+      agencies = await prisma.agency.findMany({
+        where: {
+          id: agencyId,
+        },
+        include: {
+          _count: {
+            select: { users: true },
+          },
+        },
+      });
     }
-    return [];
+
+    console.log("Agencies fetched:", agencies.length);
+    return agencies;
   } catch (error) {
     console.error("Error fetching agencies:", error);
     return [];
@@ -48,6 +65,9 @@ export default async function AgenciesPage() {
   const userRole = user?.unsafeMetadata?.role as string;
   const userAgencyId = user?.unsafeMetadata?.agencyId as string;
   const userAgencyName = user?.unsafeMetadata?.agencyName as string;
+
+  console.log("User role:", userRole);
+  console.log("User agency ID:", userAgencyId);
 
   // Regular members shouldn't access this page
   if (userRole === "STANDARD" || userRole === "GUEST" || !userRole) {
@@ -113,6 +133,8 @@ export default async function AgenciesPage() {
                             ? "bg-green-500/30 text-green-200"
                             : agency.status === "INACTIVE"
                             ? "bg-gray-500/30 text-gray-200"
+                            : agency.status === "PENDING"
+                            ? "bg-yellow-500/30 text-yellow-200"
                             : "bg-red-500/30 text-red-200"
                         }`}
                       >
@@ -159,14 +181,24 @@ export default async function AgenciesPage() {
                     <span>{agency._count?.users || 0} members</span>
                   </div>
 
-                  <div className="pt-2 border-t border-white/20">
-                    <span className="text-xs font-medium text-white/60">
-                      Membership Type:
-                    </span>
-                    <span className="ml-2 text-sm font-semibold text-white">
-                      {agency.membershipType?.replace("_", " ")}
-                    </span>
-                  </div>
+                  {agency.membershipType && (
+                    <div className="pt-2 border-t border-white/20">
+                      <span className="text-xs font-medium text-white/60">
+                        Membership Type:
+                      </span>
+                      <span className="ml-2 text-sm font-semibold text-white">
+                        {agency.membershipType === "A1_AGENCY"
+                          ? "A1 - Agency"
+                          : agency.membershipType === "A2_BRANCH"
+                          ? "A2 - Branch"
+                          : agency.membershipType === "A3_ASSOCIATE"
+                          ? "A3 - Associate"
+                          : agency.membershipType === "STERLING_PARTNER"
+                          ? "Sterling Partner"
+                          : agency.membershipType}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Action Buttons */}
@@ -214,8 +246,10 @@ export default async function AgenciesPage() {
                             if (response.ok) {
                               window.location.reload();
                             } else {
+                              const error = await response.json();
                               alert(
-                                "Cannot delete agency with existing members"
+                                error.error ||
+                                  "Cannot delete agency with existing members"
                               );
                             }
                           } catch (error) {
