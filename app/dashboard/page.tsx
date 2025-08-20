@@ -1,29 +1,19 @@
-// ============================================
-// FILE: app/dashboard/page.tsx
-// PURPOSE: Complete dashboard with role-based sidebar
-// LAST MODIFIED: December 2024
-// NOTES: Shows "My Agency" for Agency Admins, "Agencies" for Super Admins
-// ============================================
-
+// app/dashboard/page.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { useUser, UserButton } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import MemberForm from "@/components/MemberForm";
 
 export default function Dashboard() {
   const { user, isLoaded } = useUser();
   const router = useRouter();
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Get user role from metadata
   const metadata = user?.unsafeMetadata as any;
-  const userRole = (metadata?.role as string) || "SUPER_ADMIN"; // Default to SUPER_ADMIN for you
+  const userRole = (metadata?.role as string) || "SUPER_ADMIN";
   const agencyName = (metadata?.agencyName as string) || "MemberHub Pro HQ";
   const agencyId = metadata?.agencyId as string;
 
@@ -58,13 +48,15 @@ export default function Dashboard() {
     },
   ];
 
-  // FIXED: Role-based sidebar items
   const sidebarItems = [
     { icon: "📊", label: "Dashboard", active: true, href: "/dashboard" },
     { icon: "👥", label: "Members", href: "/members" },
     {
       icon: "🏢",
-      label: userRole === "AGENCY_ADMIN" ? "My Agency" : "Agencies",
+      label:
+        userRole === "AGENCY_ADMIN" || userRole === "ADMIN"
+          ? "My Agency"
+          : "Agencies",
       href: "/agencies",
     },
     { icon: "📅", label: "Events", href: "/events" },
@@ -88,7 +80,7 @@ export default function Dashboard() {
         let data = await response.json();
 
         // If Agency Admin, only show their agency's members
-        if (userRole === "AGENCY_ADMIN" && agencyId) {
+        if ((userRole === "AGENCY_ADMIN" || userRole === "ADMIN") && agencyId) {
           data = data.filter((member: any) => member.agencyId === agencyId);
         }
 
@@ -101,31 +93,16 @@ export default function Dashboard() {
     }
   };
 
-  const handleEditMember = (member: any) => {
-    // Check permissions
-    if (userRole === "AGENCY_ADMIN" && member.agencyId !== agencyId) {
-      alert("You can only edit members from your own agency");
-      return;
-    }
-
-    // Ensure member has all required fields for the form
-    const memberWithAllFields = {
-      ...member,
-      firstName: member.firstName || member.name?.split(" ")[0] || "",
-      lastName:
-        member.lastName || member.name?.split(" ").slice(1).join(" ") || "",
-      phone: member.phone || "",
-      role: member.role || "AGENCY_USER",
-      status: member.status || "ACTIVE",
-      agencyId: member.agencyId || member.agency?.id || "",
-    };
-    setSelectedMember(memberWithAllFields);
-    setShowEditModal(true);
+  const handleEditMember = (memberId: string) => {
+    router.push(`/members/${memberId}/edit`);
   };
 
   const handleDeleteMember = async (memberId: string, member: any) => {
     // Check permissions
-    if (userRole === "AGENCY_ADMIN" && member.agencyId !== agencyId) {
+    if (
+      (userRole === "AGENCY_ADMIN" || userRole === "ADMIN") &&
+      member.agencyId !== agencyId
+    ) {
       alert("You can only delete members from your own agency");
       return;
     }
@@ -137,19 +114,13 @@ export default function Dashboard() {
         method: "DELETE",
       });
 
-      console.log("Delete request sent, assuming success...");
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      fetchMembers();
-      alert("Member deleted successfully!");
-    } catch (error) {
-      if (error instanceof TypeError && error.message.includes("fetch")) {
-        console.error("Network error:", error);
-        alert("Network error. Please check your connection and try again.");
-      } else {
-        console.log("Error occurred but refreshing anyway");
-        await new Promise((resolve) => setTimeout(resolve, 500));
+      if (response.ok) {
         fetchMembers();
+        alert("Member deleted successfully!");
       }
+    } catch (error) {
+      console.error("Error deleting member:", error);
+      alert("Failed to delete member");
     }
   };
 
@@ -172,18 +143,33 @@ export default function Dashboard() {
         icon: "👑",
         label: "Super Admin",
       },
+      ADMIN: {
+        color: "from-blue-500 to-purple-600",
+        icon: "🏢",
+        label: "Agency Admin",
+      },
       AGENCY_ADMIN: {
         color: "from-blue-500 to-purple-600",
         icon: "🏢",
         label: "Agency Admin",
       },
-      AGENCY_USER: {
+      PRIMARY: {
         color: "from-green-500 to-teal-600",
+        icon: "⭐",
+        label: "Primary",
+      },
+      STANDARD: {
+        color: "from-gray-500 to-gray-600",
         icon: "👤",
         label: "Member",
       },
+      GUEST: {
+        color: "from-gray-400 to-gray-500",
+        icon: "👤",
+        label: "Guest",
+      },
     };
-    return badges[userRole] || badges["SUPER_ADMIN"];
+    return badges[userRole] || badges["STANDARD"];
   };
 
   const getUserRoleBadge = (role: string) => {
@@ -192,13 +178,25 @@ export default function Dashboard() {
         label: "Super Admin",
         color: "bg-red-500/20 text-red-300",
       },
+      ADMIN: {
+        label: "Admin",
+        color: "bg-orange-500/20 text-orange-300",
+      },
       AGENCY_ADMIN: {
         label: "Admin",
         color: "bg-orange-500/20 text-orange-300",
       },
-      AGENCY_USER: {
+      PRIMARY: {
+        label: "Primary",
+        color: "bg-blue-500/20 text-blue-300",
+      },
+      STANDARD: {
         label: "Member",
         color: "bg-green-500/20 text-green-300",
+      },
+      GUEST: {
+        label: "Guest",
+        color: "bg-gray-500/20 text-gray-300",
       },
     };
     return (
@@ -213,10 +211,15 @@ export default function Dashboard() {
 
   // Check if user can add/edit/delete members
   const canManageMembers =
-    userRole === "SUPER_ADMIN" || userRole === "AGENCY_ADMIN";
+    userRole === "SUPER_ADMIN" ||
+    userRole === "ADMIN" ||
+    userRole === "AGENCY_ADMIN";
   const canDeleteMember = (member: any) => {
     if (userRole === "SUPER_ADMIN") return true;
-    if (userRole === "AGENCY_ADMIN" && member.agencyId === agencyId)
+    if (
+      (userRole === "ADMIN" || userRole === "AGENCY_ADMIN") &&
+      member.agencyId === agencyId
+    )
       return true;
     return false;
   };
@@ -341,12 +344,14 @@ export default function Dashboard() {
           <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">
-                {userRole === "AGENCY_ADMIN" ? "Agency Members" : "Members"} (
-                {members.length})
+                {userRole === "AGENCY_ADMIN" || userRole === "ADMIN"
+                  ? "Agency Members"
+                  : "Members"}{" "}
+                ({members.length})
               </h2>
               {canManageMembers && (
                 <button
-                  onClick={() => setShowAddModal(true)}
+                  onClick={() => router.push("/members/new")}
                   className="px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all"
                 >
                   + Add Member
@@ -457,7 +462,7 @@ export default function Dashboard() {
                             <div className="flex gap-2">
                               {canManageMembers && (
                                 <button
-                                  onClick={() => handleEditMember(member)}
+                                  onClick={() => handleEditMember(member.id)}
                                   className="p-2 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all"
                                   title="Edit member"
                                 >
@@ -556,72 +561,6 @@ export default function Dashboard() {
           </div>
         </main>
       </div>
-
-      {/* Add Member Modal */}
-      {showAddModal && canManageMembers && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-br from-indigo-500/90 to-purple-600/90 backdrop-blur-xl rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-white/20">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-3xl font-bold text-white">
-                Add New Member
-                {userRole === "AGENCY_ADMIN" && (
-                  <span className="text-lg text-white/70 block mt-1">
-                    to {agencyName}
-                  </span>
-                )}
-              </h2>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-white/80 hover:text-white text-2xl transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <MemberForm
-              agencyId={userRole === "AGENCY_ADMIN" ? agencyId : undefined}
-              onClose={() => setShowAddModal(false)}
-              onSuccess={() => {
-                setShowAddModal(false);
-                fetchMembers();
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Edit Member Modal */}
-      {showEditModal && selectedMember && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gradient-to-br from-indigo-500/90 to-purple-600/90 backdrop-blur-xl rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto border border-white/20">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-3xl font-bold text-white">Edit Member</h2>
-              <button
-                onClick={() => {
-                  setShowEditModal(false);
-                  setSelectedMember(null);
-                }}
-                className="text-white/80 hover:text-white text-2xl transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <MemberForm
-              member={selectedMember}
-              onClose={() => {
-                setShowEditModal(false);
-                setSelectedMember(null);
-              }}
-              onSuccess={() => {
-                setShowEditModal(false);
-                setSelectedMember(null);
-                fetchMembers();
-              }}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
