@@ -90,16 +90,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if agency with same email exists
-    const existingAgency = await prisma.agency.findFirst({
-      where: { email: body.email },
-    });
+    try {
+      // Check if agency with same email exists - wrapped in try-catch
+      const existingAgency = await prisma.agency.findFirst({
+        where: { email: body.email },
+      });
 
-    if (existingAgency) {
-      return NextResponse.json(
-        { error: "Agency with this email already exists" },
-        { status: 400 }
-      );
+      if (existingAgency) {
+        return NextResponse.json(
+          { error: "Agency with this email already exists" },
+          { status: 400 }
+        );
+      }
+    } catch (findError) {
+      console.log("Error checking existing agency, continuing:", findError);
+      // Continue even if the check fails
     }
 
     // Map the status from the form to the MembershipStatus enum
@@ -119,40 +124,80 @@ export async function POST(request: NextRequest) {
         "STERLING_PARTNER",
       ];
       if (validTypes.includes(body.membershipType)) {
-        membershipType = body.membershipType;
+        membershipType = body.membershipType as any;
       }
     }
 
     // Create the agency with fields that match your Prisma schema
+    const agencyData = {
+      name: body.name,
+      email: body.email,
+      phone: body.phone || null,
+      address: body.address || null,
+      city: body.city || null,
+      state: body.state || null,
+      zipCode: body.zipCode || null,
+      country: body.country || "USA",
+      website: body.website || null,
+      membershipType: membershipType,
+      membershipLevel: body.membershipLevel || null,
+      primaryContactName: body.primaryContactName || null,
+      primaryContactEmail: body.primaryContactEmail || null,
+      primaryContactPhone: body.primaryContactPhone || null,
+      status: membershipStatus,
+    };
+
+    console.log("Creating agency with data:", agencyData); // Debug log
+
     const newAgency = await prisma.agency.create({
-      data: {
-        name: body.name,
-        email: body.email,
-        phone: body.phone || null,
-        address: body.address || null,
-        city: body.city || null,
-        state: body.state || null,
-        zipCode: body.zipCode || null,
-        country: body.country || "USA",
-        website: body.website || null,
-        membershipType: membershipType,
-        membershipLevel: body.membershipLevel || null,
-        primaryContactName: body.primaryContactName || null,
-        primaryContactEmail: body.primaryContactEmail || null,
-        primaryContactPhone: body.primaryContactPhone || null,
-        status: membershipStatus,
-      },
+      data: agencyData,
     });
 
     console.log("Created agency:", newAgency); // Debug log
 
     return NextResponse.json(newAgency, { status: 201 });
   } catch (error: any) {
-    console.error("Error creating agency:", error);
+    console.error("Error creating agency - Full error:", error);
+
+    // Check for Prisma-specific errors
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        {
+          error: "An agency with this email or member number already exists",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (error.code === "P2003") {
+      return NextResponse.json(
+        {
+          error: "Invalid reference: Please check all fields",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check if it's a database connection error
+    if (
+      error.message?.includes("prisma") ||
+      error.message?.includes("database")
+    ) {
+      return NextResponse.json(
+        {
+          error: "Database connection error. Please try again.",
+          details:
+            process.env.NODE_ENV === "development" ? error.message : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json(
       {
-        error: "Failed to create agency",
-        details: error.message,
+        error: error.message || "Failed to create agency",
+        details:
+          process.env.NODE_ENV === "development" ? error.toString() : undefined,
         code: error.code,
       },
       { status: 500 }
