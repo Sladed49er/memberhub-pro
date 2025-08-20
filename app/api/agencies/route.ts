@@ -1,12 +1,15 @@
 // app/api/agencies/route.ts
+// Fixed version with proper database fetching and error handling
+
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
+// GET - Fetch all agencies (Super Admin) or user's agency (Admin)
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -15,54 +18,68 @@ export async function GET(request: NextRequest) {
     const userRole = user?.unsafeMetadata?.role as string;
     const userAgencyId = user?.unsafeMetadata?.agencyId as string;
 
+    console.log(
+      "API: Fetching agencies for role:",
+      userRole,
+      "agencyId:",
+      userAgencyId
+    );
+
+    // Check permissions
+    if (!userRole || (userRole !== "SUPER_ADMIN" && userRole !== "ADMIN")) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
+
     let agencies;
 
     if (userRole === "SUPER_ADMIN") {
-      // Super Admins can see all agencies
+      // Super Admin can see all agencies
       agencies = await prisma.agency.findMany({
-        include: {
-          _count: {
-            select: { users: true },
-          },
-        },
         orderBy: {
           createdAt: "desc",
         },
       });
-    } else if (userRole === "ADMIN" || userRole === "AGENCY_ADMIN") {
-      // Agency Admins can only see their own agency
-      if (!userAgencyId) {
-        return NextResponse.json([]);
-      }
-
+      console.log("API: Found", agencies.length, "agencies for Super Admin");
+    } else if (userRole === "ADMIN" && userAgencyId) {
+      // Admin can only see their own agency
       agencies = await prisma.agency.findMany({
         where: {
           id: userAgencyId,
         },
-        include: {
-          _count: {
-            select: { users: true },
-          },
-        },
       });
+      console.log("API: Found", agencies.length, "agencies for Admin");
     } else {
-      // Regular users shouldn't access this endpoint
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      // No valid permission scenario
+      return NextResponse.json(
+        { error: "No agency associated with this user" },
+        { status: 403 }
+      );
     }
 
-    return NextResponse.json(agencies || []);
+    // Debug: Log what we're returning
+    console.log("API: Returning agencies:", agencies);
+
+    return NextResponse.json(agencies);
   } catch (error) {
-    console.error("Error fetching agencies:", error);
+    console.error("API Error fetching agencies:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      {
+        error: "Failed to fetch agencies",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }
 }
 
+// POST - Create a new agency (Super Admin only)
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -70,135 +87,64 @@ export async function POST(request: NextRequest) {
     const user = await currentUser();
     const userRole = user?.unsafeMetadata?.role as string;
 
-    // Only Super Admins can create agencies
+    // Only Super Admin can create agencies
     if (userRole !== "SUPER_ADMIN") {
       return NextResponse.json(
-        { error: "Forbidden: Only Super Admins can create agencies" },
+        { error: "Only Super Admins can create agencies" },
         { status: 403 }
       );
     }
 
     const body = await request.json();
+    console.log("API: Creating agency with data:", body);
 
-    console.log("Received body:", body); // Debug log
-
-    // Validate required fields
-    if (!body.name || !body.email) {
-      return NextResponse.json(
-        { error: "Name and email are required" },
-        { status: 400 }
-      );
-    }
-
-    try {
-      // Check if agency with same email exists - wrapped in try-catch
-      const existingAgency = await prisma.agency.findFirst({
-        where: { email: body.email },
-      });
-
-      if (existingAgency) {
-        return NextResponse.json(
-          { error: "Agency with this email already exists" },
-          { status: 400 }
-        );
-      }
-    } catch (findError) {
-      console.log("Error checking existing agency, continuing:", findError);
-      // Continue even if the check fails
-    }
-
-    // Map the status from the form to the MembershipStatus enum
-    let membershipStatus: "PENDING" | "ACTIVE" | "INACTIVE" | "SUSPENDED" =
-      "PENDING";
-    if (body.status === "ACTIVE") membershipStatus = "ACTIVE";
-    else if (body.status === "INACTIVE") membershipStatus = "INACTIVE";
-    else if (body.status === "SUSPENDED") membershipStatus = "SUSPENDED";
-
-    // Map the membership type - ensure it's a valid enum value or null
-    let membershipType = null;
-    if (body.membershipType) {
-      const validTypes = [
-        "A1_AGENCY",
-        "A2_BRANCH",
-        "A3_ASSOCIATE",
-        "STERLING_PARTNER",
-      ];
-      if (validTypes.includes(body.membershipType)) {
-        membershipType = body.membershipType as any;
-      }
-    }
-
-    // Create the agency with fields that match your Prisma schema
-    const agencyData = {
-      name: body.name,
-      email: body.email,
-      phone: body.phone || null,
-      address: body.address || null,
-      city: body.city || null,
-      state: body.state || null,
-      zipCode: body.zipCode || null,
-      country: body.country || "USA",
-      website: body.website || null,
-      membershipType: membershipType,
-      membershipLevel: body.membershipLevel || null,
-      primaryContactName: body.primaryContactName || null,
-      primaryContactEmail: body.primaryContactEmail || null,
-      primaryContactPhone: body.primaryContactPhone || null,
-      status: membershipStatus,
-    };
-
-    console.log("Creating agency with data:", agencyData); // Debug log
-
-    const newAgency = await prisma.agency.create({
-      data: agencyData,
+    // Check if agency with this email already exists
+    const existingAgency = await prisma.agency.findFirst({
+      where: { email: body.email },
     });
 
-    console.log("Created agency:", newAgency); // Debug log
-
-    return NextResponse.json(newAgency, { status: 201 });
-  } catch (error: any) {
-    console.error("Error creating agency - Full error:", error);
-
-    // Check for Prisma-specific errors
-    if (error.code === "P2002") {
+    if (existingAgency) {
+      console.log("API: Agency with email already exists:", body.email);
       return NextResponse.json(
-        {
-          error: "An agency with this email or member number already exists",
-        },
+        { error: "Agency with this email already exists" },
         { status: 400 }
       );
     }
 
-    if (error.code === "P2003") {
-      return NextResponse.json(
-        {
-          error: "Invalid reference: Please check all fields",
-        },
-        { status: 400 }
-      );
-    }
+    // Format the primary contact name
+    const primaryContactName =
+      body.primaryContactFirstName && body.primaryContactLastName
+        ? `${body.primaryContactFirstName} ${body.primaryContactLastName}`
+        : null;
 
-    // Check if it's a database connection error
-    if (
-      error.message?.includes("prisma") ||
-      error.message?.includes("database")
-    ) {
-      return NextResponse.json(
-        {
-          error: "Database connection error. Please try again.",
-          details:
-            process.env.NODE_ENV === "development" ? error.message : undefined,
-        },
-        { status: 500 }
-      );
-    }
+    // Create the agency
+    const agency = await prisma.agency.create({
+      data: {
+        name: body.name,
+        email: body.email,
+        phone: body.phone || null,
+        address: body.address || null,
+        city: body.city || null,
+        state: body.state || null,
+        zipCode: body.zipCode || null,
+        website: body.website || null,
+        membershipType: body.membershipType || null,
+        status: body.status || "PENDING",
+        primaryContactName: primaryContactName,
+        primaryContactEmail: body.primaryContactEmail || null,
+        primaryContactPhone: body.primaryContactPhone || null,
+      },
+    });
 
+    console.log("API: Successfully created agency:", agency.id);
+
+    return NextResponse.json(agency, { status: 201 });
+  } catch (error) {
+    console.error("API Error creating agency:", error);
     return NextResponse.json(
       {
-        error: error.message || "Failed to create agency",
-        details:
-          process.env.NODE_ENV === "development" ? error.toString() : undefined,
-        code: error.code,
+        error: "Failed to create agency",
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );
