@@ -72,10 +72,15 @@ export async function POST(request: NextRequest) {
 
     // Only Super Admins can create agencies
     if (userRole !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden: Only Super Admins can create agencies" },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
+
+    console.log("Received body:", body); // Debug log
 
     // Validate required fields
     if (!body.name || !body.email) {
@@ -97,7 +102,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create the agency
+    // Map the status from the form to the MembershipStatus enum
+    let membershipStatus: "PENDING" | "ACTIVE" | "INACTIVE" | "SUSPENDED" =
+      "PENDING";
+    if (body.status === "ACTIVE") membershipStatus = "ACTIVE";
+    else if (body.status === "INACTIVE") membershipStatus = "INACTIVE";
+    else if (body.status === "SUSPENDED") membershipStatus = "SUSPENDED";
+
+    // Create the agency with fields that match your Prisma schema
     const newAgency = await prisma.agency.create({
       data: {
         name: body.name,
@@ -107,20 +119,28 @@ export async function POST(request: NextRequest) {
         city: body.city || null,
         state: body.state || null,
         zipCode: body.zipCode || null,
+        country: body.country || "USA",
         website: body.website || null,
+        membershipType: body.membershipType || null,
+        membershipLevel: body.membershipLevel || null,
         primaryContactName: body.primaryContactName || null,
         primaryContactEmail: body.primaryContactEmail || null,
         primaryContactPhone: body.primaryContactPhone || null,
-        membershipType: body.membershipType || "A1_AGENCY",
-        status: body.status || "ACTIVE",
+        status: membershipStatus,
       },
     });
 
+    console.log("Created agency:", newAgency); // Debug log
+
     return NextResponse.json(newAgency, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating agency:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      {
+        error: "Failed to create agency",
+        details: error.message,
+        code: error.code,
+      },
       { status: 500 }
     );
   }

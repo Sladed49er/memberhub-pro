@@ -27,6 +27,11 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
   const { user } = useUser();
   const userRole = user?.unsafeMetadata?.role as string;
 
+  // Parse existing contact name if editing
+  const existingContactParts = agency?.primaryContactName?.split(" ") || [];
+  const existingFirstName = existingContactParts[0] || "";
+  const existingLastName = existingContactParts.slice(1).join(" ") || "";
+
   const [formData, setFormData] = useState({
     name: agency?.name || "",
     email: agency?.email || "",
@@ -36,11 +41,12 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
     state: agency?.state || "",
     zipCode: agency?.zipCode || "",
     website: agency?.website || "",
-    primaryContactName: agency?.primaryContactName || "",
+    primaryContactFirstName: existingFirstName,
+    primaryContactLastName: existingLastName,
     primaryContactEmail: agency?.primaryContactEmail || "",
     primaryContactPhone: agency?.primaryContactPhone || "",
     membershipType: agency?.membershipType || "A1_AGENCY",
-    status: agency?.status || "ACTIVE",
+    status: agency?.status || "PENDING",
   });
 
   const [loading, setLoading] = useState(false);
@@ -50,35 +56,88 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
   const isAgencyAdmin = userRole === "AGENCY_ADMIN" || userRole === "ADMIN";
   const isSuperAdmin = userRole === "SUPER_ADMIN";
 
+  // Format website URL
+  const formatWebsiteUrl = (url: string) => {
+    if (!url) return "";
+
+    // Remove any whitespace
+    url = url.trim();
+
+    // If it doesn't start with http:// or https://, add https://
+    if (!url.match(/^https?:\/\//)) {
+      return `https://${url}`;
+    }
+
+    return url;
+  };
+
+  const handleWebsiteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, website: e.target.value });
+  };
+
+  const handleWebsiteBlur = () => {
+    // Format the URL when user leaves the field
+    if (formData.website) {
+      setFormData({ ...formData, website: formatWebsiteUrl(formData.website) });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
+      // Combine first and last name for primaryContactName
+      const primaryContactName =
+        formData.primaryContactFirstName && formData.primaryContactLastName
+          ? `${formData.primaryContactFirstName} ${formData.primaryContactLastName}`.trim()
+          : formData.primaryContactFirstName ||
+            formData.primaryContactLastName ||
+            "";
+
+      // Format website URL before sending
+      const formattedWebsite = formatWebsiteUrl(formData.website);
+
       // For Agency Admins, only send editable fields
       const dataToSend =
         isAgencyAdmin && mode === "edit"
           ? {
               name: formData.name,
               email: formData.email,
-              phone: formData.phone,
-              address: formData.address,
-              city: formData.city,
-              state: formData.state,
-              zipCode: formData.zipCode,
-              website: formData.website,
-              primaryContactName: formData.primaryContactName,
-              primaryContactEmail: formData.primaryContactEmail,
-              primaryContactPhone: formData.primaryContactPhone,
+              phone: formData.phone || null,
+              address: formData.address || null,
+              city: formData.city || null,
+              state: formData.state || null,
+              zipCode: formData.zipCode || null,
+              website: formattedWebsite || null,
+              primaryContactName: primaryContactName || null,
+              primaryContactEmail: formData.primaryContactEmail || null,
+              primaryContactPhone: formData.primaryContactPhone || null,
               // Explicitly exclude membershipType and status for Agency Admins
             }
-          : formData; // Super Admins can send all fields
+          : {
+              name: formData.name,
+              email: formData.email,
+              phone: formData.phone || null,
+              address: formData.address || null,
+              city: formData.city || null,
+              state: formData.state || null,
+              zipCode: formData.zipCode || null,
+              website: formattedWebsite || null,
+              primaryContactName: primaryContactName || null,
+              primaryContactEmail: formData.primaryContactEmail || null,
+              primaryContactPhone: formData.primaryContactPhone || null,
+              membershipType: formData.membershipType,
+              status: formData.status,
+            };
 
       const url =
         mode === "create" ? "/api/agencies" : `/api/agencies/${agency.id}`;
 
       const method = mode === "create" ? "POST" : "PUT";
+
+      console.log("Sending data:", dataToSend); // Debug log
 
       const response = await fetch(url, {
         method,
@@ -88,14 +147,16 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
         body: JSON.stringify(dataToSend),
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to save agency");
+        throw new Error(responseData.error || "Failed to save agency");
       }
 
       router.push("/agencies");
       router.refresh();
     } catch (err: any) {
+      console.error("Error saving agency:", err); // Debug log
       setError(err.message);
     } finally {
       setLoading(false);
@@ -146,6 +207,7 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
                 setFormData({ ...formData, name: e.target.value })
               }
               required
+              placeholder="Agency Name"
             />
           </div>
 
@@ -159,6 +221,7 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
                 setFormData({ ...formData, email: e.target.value })
               }
               required
+              placeholder="agency@example.com"
             />
           </div>
 
@@ -179,13 +242,14 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
             <Label htmlFor="website">Website</Label>
             <Input
               id="website"
-              type="url"
               value={formData.website}
-              onChange={(e) =>
-                setFormData({ ...formData, website: e.target.value })
-              }
-              placeholder="https://example.com"
+              onChange={handleWebsiteChange}
+              onBlur={handleWebsiteBlur}
+              placeholder="example.com or https://example.com"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Enter domain name (e.g., example.com)
+            </p>
           </div>
         </div>
       </div>
@@ -225,7 +289,10 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
               id="state"
               value={formData.state}
               onChange={(e) =>
-                setFormData({ ...formData, state: e.target.value })
+                setFormData({
+                  ...formData,
+                  state: e.target.value.toUpperCase(),
+                })
               }
               placeholder="OR"
               maxLength={2}
@@ -253,14 +320,32 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="primaryContactName">Contact Name</Label>
+            <Label htmlFor="primaryContactFirstName">First Name</Label>
             <Input
-              id="primaryContactName"
-              value={formData.primaryContactName}
+              id="primaryContactFirstName"
+              value={formData.primaryContactFirstName}
               onChange={(e) =>
-                setFormData({ ...formData, primaryContactName: e.target.value })
+                setFormData({
+                  ...formData,
+                  primaryContactFirstName: e.target.value,
+                })
               }
-              placeholder="John Doe"
+              placeholder="John"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="primaryContactLastName">Last Name</Label>
+            <Input
+              id="primaryContactLastName"
+              value={formData.primaryContactLastName}
+              onChange={(e) =>
+                setFormData({
+                  ...formData,
+                  primaryContactLastName: e.target.value,
+                })
+              }
+              placeholder="Doe"
             />
           </div>
 
@@ -280,7 +365,7 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
             />
           </div>
 
-          <div className="md:col-span-2">
+          <div>
             <Label htmlFor="primaryContactEmail">Contact Email</Label>
             <Input
               id="primaryContactEmail"
@@ -340,6 +425,7 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
                   <SelectContent>
                     <SelectItem value="ACTIVE">Active</SelectItem>
                     <SelectItem value="INACTIVE">Inactive</SelectItem>
+                    <SelectItem value="PENDING">Pending</SelectItem>
                     <SelectItem value="SUSPENDED">Suspended</SelectItem>
                   </SelectContent>
                 </Select>
