@@ -1,9 +1,4 @@
-// ============================================
-// FILE: app/check-role/page.tsx
-// PURPOSE: Debug and fix user role issues
-// INSTRUCTIONS: Create this file to check and fix your role
-// ============================================
-
+// app/check-role/page.tsx
 "use client";
 
 import { useUser } from "@clerk/nextjs";
@@ -41,8 +36,8 @@ export default function CheckRolePage() {
         body: JSON.stringify({
           userId: user?.id,
           role: newRole,
-          agencyId: currentAgencyId || "netstar-agency-001", // Default agency ID
-          agencyName: currentAgencyName || "Netstar, Inc.",
+          agencyId: currentAgencyId || null, // No default agency ID
+          agencyName: currentAgencyName || null, // No default agency name
         }),
       });
 
@@ -52,11 +47,11 @@ export default function CheckRolePage() {
           window.location.reload();
         }, 2000);
       } else {
-        setMessage("Failed to update role. Check console for details.");
+        setMessage("Failed to update role. Please try again.");
       }
     } catch (error) {
       console.error("Error updating role:", error);
-      setMessage("Error updating role. See console.");
+      setMessage("An error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -67,130 +62,143 @@ export default function CheckRolePage() {
       <div className="max-w-4xl mx-auto">
         <button
           onClick={() => router.push("/dashboard")}
-          className="mb-4 px-4 py-2 bg-white/10 backdrop-blur-md border border-white/20 rounded-lg text-white hover:bg-white/20"
+          className="mb-6 px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition-all"
         >
           ← Back to Dashboard
         </button>
 
-        <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-xl p-8">
-          <h1 className="text-3xl font-bold text-white mb-6">
-            Role Checker & Fixer
+        <div className="bg-white/10 backdrop-blur-md rounded-xl p-8 border border-white/20">
+          <h1 className="text-3xl font-bold text-white mb-8">
+            Check & Fix User Role
           </h1>
 
-          {/* Current User Info */}
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-lg p-6 mb-6">
+          {/* Current Status */}
+          <div className="mb-8 p-6 bg-white/10 rounded-lg">
             <h2 className="text-xl font-semibold text-white mb-4">
-              Current User Information
+              Current Status
             </h2>
-            <div className="space-y-2 text-white">
+            <div className="space-y-2 text-white/90">
               <p>
-                <span className="text-white/60">Name:</span> {user?.firstName}{" "}
-                {user?.lastName}
+                <span className="font-semibold">User ID:</span> {user?.id}
               </p>
               <p>
-                <span className="text-white/60">Email:</span>{" "}
-                {user?.emailAddresses[0]?.emailAddress}
+                <span className="font-semibold">Email:</span>{" "}
+                {user?.emailAddresses?.[0]?.emailAddress}
               </p>
               <p>
-                <span className="text-white/60">Clerk ID:</span> {user?.id}
-              </p>
-            </div>
-          </div>
-
-          {/* Current Metadata */}
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold text-white mb-4">
-              Current Metadata
-            </h2>
-            <div className="space-y-2">
-              <p className="text-white">
-                <span className="text-white/60">Role:</span>{" "}
+                <span className="font-semibold">Current Role:</span>{" "}
                 <span
                   className={`px-3 py-1 rounded-full text-sm ${
                     currentRole === "SUPER_ADMIN"
-                      ? "bg-red-500/20 text-red-300"
-                      : currentRole === "AGENCY_ADMIN"
-                      ? "bg-orange-500/20 text-orange-300"
-                      : currentRole === "AGENCY_USER"
-                      ? "bg-green-500/20 text-green-300"
-                      : "bg-gray-500/20 text-gray-300"
+                      ? "bg-red-500/30 text-red-200"
+                      : currentRole === "ADMIN" ||
+                        currentRole === "AGENCY_ADMIN"
+                      ? "bg-orange-500/30 text-orange-200"
+                      : currentRole === "PRIMARY"
+                      ? "bg-blue-500/30 text-blue-200"
+                      : currentRole === "STANDARD"
+                      ? "bg-green-500/30 text-green-200"
+                      : "bg-gray-500/30 text-gray-200"
                   }`}
                 >
                   {currentRole || "NOT SET"}
                 </span>
               </p>
-              <p className="text-white">
-                <span className="text-white/60">Agency ID:</span>{" "}
-                {currentAgencyId || "NOT SET"}
-              </p>
-              <p className="text-white">
-                <span className="text-white/60">Agency Name:</span>{" "}
-                {currentAgencyName || "NOT SET"}
-              </p>
+              {currentAgencyId && (
+                <>
+                  <p>
+                    <span className="font-semibold">Agency ID:</span>{" "}
+                    {currentAgencyId}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Agency Name:</span>{" "}
+                    {currentAgencyName}
+                  </p>
+                </>
+              )}
             </div>
-          </div>
-
-          {/* Raw Metadata */}
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold text-white mb-4">
-              Raw Metadata (Debug)
-            </h2>
-            <pre className="text-white/80 text-xs overflow-auto">
-              {JSON.stringify(metadata, null, 2)}
-            </pre>
           </div>
 
           {/* Quick Fix Buttons */}
-          <div className="bg-white/10 backdrop-blur-md border border-white/20 rounded-lg p-6">
+          <div className="mb-8">
             <h2 className="text-xl font-semibold text-white mb-4">
               Quick Fix Options
             </h2>
-
-            {message && (
-              <div
-                className={`mb-4 p-3 rounded-lg ${
-                  message.includes("updated")
-                    ? "bg-green-500/20 text-green-300"
-                    : "bg-red-500/20 text-red-300"
-                }`}
-              >
-                {message}
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                onClick={() => fixMyRole("AGENCY_USER")}
-                disabled={loading || currentRole === "AGENCY_USER"}
-                className="px-6 py-3 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:from-green-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Set as Member
-              </button>
-
-              <button
-                onClick={() => fixMyRole("AGENCY_ADMIN")}
-                disabled={loading || currentRole === "AGENCY_ADMIN"}
-                className="px-6 py-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white rounded-lg hover:from-orange-600 hover:to-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Set as Agency Admin
-              </button>
-
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <button
                 onClick={() => fixMyRole("SUPER_ADMIN")}
                 disabled={loading || currentRole === "SUPER_ADMIN"}
-                className="px-6 py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg hover:from-red-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="p-4 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Set as Super Admin
+                <div className="font-semibold">Super Admin</div>
+                <div className="text-sm opacity-80">Full system access</div>
+              </button>
+
+              <button
+                onClick={() => fixMyRole("ADMIN")}
+                disabled={loading || currentRole === "ADMIN"}
+                className="p-4 bg-gradient-to-r from-orange-500 to-amber-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="font-semibold">Agency Admin</div>
+                <div className="text-sm opacity-80">
+                  Manage agency & members
+                </div>
+              </button>
+
+              <button
+                onClick={() => fixMyRole("PRIMARY")}
+                disabled={loading || currentRole === "PRIMARY"}
+                className="p-4 bg-gradient-to-r from-blue-500 to-cyan-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="font-semibold">Primary Member</div>
+                <div className="text-sm opacity-80">Enhanced member access</div>
+              </button>
+
+              <button
+                onClick={() => fixMyRole("STANDARD")}
+                disabled={loading || currentRole === "STANDARD"}
+                className="p-4 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="font-semibold">Standard Member</div>
+                <div className="text-sm opacity-80">Basic member access</div>
+              </button>
+
+              <button
+                onClick={() => fixMyRole("GUEST")}
+                disabled={loading || currentRole === "GUEST"}
+                className="p-4 bg-gradient-to-r from-gray-500 to-slate-600 text-white rounded-lg hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="font-semibold">Guest</div>
+                <div className="text-sm opacity-80">Limited access</div>
               </button>
             </div>
+          </div>
 
-            <div className="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-              <p className="text-yellow-300 text-sm">
-                <strong>Note:</strong> After changing your role, the page will
-                refresh. You should then be able to add/edit members according
-                to your new role.
-              </p>
+          {/* Message Display */}
+          {message && (
+            <div
+              className={`p-4 rounded-lg ${
+                message.includes("Failed") || message.includes("error")
+                  ? "bg-red-500/20 text-red-200"
+                  : "bg-green-500/20 text-green-200"
+              }`}
+            >
+              {message}
             </div>
+          )}
+
+          {/* Instructions */}
+          <div className="mt-8 p-6 bg-white/5 rounded-lg">
+            <h3 className="text-lg font-semibold text-white mb-2">
+              Instructions
+            </h3>
+            <ul className="space-y-2 text-white/80 text-sm">
+              <li>• This page helps you check and fix your user role</li>
+              <li>• Click any button above to update your role</li>
+              <li>• The page will refresh after updating</li>
+              <li>• Use Super Admin for full system access</li>
+              <li>• Use Agency Admin to manage an agency</li>
+            </ul>
           </div>
         </div>
       </div>

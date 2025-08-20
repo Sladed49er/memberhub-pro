@@ -1,9 +1,4 @@
-// ============================================
-// FILE: app/fix-role/page.tsx
-// PURPOSE: Simple page to fix your role
-// INSTRUCTIONS: Create this file in app/fix-role/page.tsx
-// ============================================
-
+// app/fix-role/page.tsx
 "use client";
 
 import { useUser } from "@clerk/nextjs";
@@ -19,13 +14,17 @@ export default function FixRolePage() {
     setStatus(`Setting role to ${role}...`);
 
     try {
+      const metadata = user?.unsafeMetadata as any;
+      const currentAgencyId = metadata?.agencyId;
+      const currentAgencyName = metadata?.agencyName;
+
       const response = await fetch("/api/fix-role", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: role,
-          agencyId: "netstar-agency-001",
-          agencyName: "Netstar, Inc.",
+          agencyId: currentAgencyId || null,
+          agencyName: currentAgencyName || null,
         }),
       });
 
@@ -60,6 +59,7 @@ export default function FixRolePage() {
   const metadata = user?.unsafeMetadata as any;
   const currentRole = metadata?.role || "NOT SET";
   const currentAgencyId = metadata?.agencyId || "NOT SET";
+  const currentAgencyName = metadata?.agencyName || "NOT SET";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
@@ -81,6 +81,7 @@ export default function FixRolePage() {
               <span className="font-bold text-yellow-300">{currentRole}</span>
             </p>
             <p>Agency ID: {currentAgencyId}</p>
+            <p>Agency Name: {currentAgencyName}</p>
           </div>
         </div>
 
@@ -102,7 +103,15 @@ export default function FixRolePage() {
         {/* Action Buttons */}
         <div className="space-y-3">
           <button
-            onClick={() => fixRole("AGENCY_ADMIN")}
+            onClick={() => fixRole("SUPER_ADMIN")}
+            disabled={loading}
+            className="w-full px-6 py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg hover:from-red-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+          >
+            Set as Super Admin
+          </button>
+
+          <button
+            onClick={() => fixRole("ADMIN")}
             disabled={loading}
             className="w-full px-6 py-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white rounded-lg hover:from-orange-600 hover:to-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
           >
@@ -110,11 +119,27 @@ export default function FixRolePage() {
           </button>
 
           <button
-            onClick={() => fixRole("SUPER_ADMIN")}
+            onClick={() => fixRole("PRIMARY")}
             disabled={loading}
-            className="w-full px-6 py-3 bg-gradient-to-r from-red-500 to-pink-500 text-white rounded-lg hover:from-red-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+            className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg hover:from-blue-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
           >
-            Set as Super Admin
+            Set as Primary Member
+          </button>
+
+          <button
+            onClick={() => fixRole("STANDARD")}
+            disabled={loading}
+            className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg hover:from-green-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+          >
+            Set as Standard Member
+          </button>
+
+          <button
+            onClick={() => fixRole("GUEST")}
+            disabled={loading}
+            className="w-full px-6 py-3 bg-gradient-to-r from-gray-500 to-slate-500 text-white rounded-lg hover:from-gray-600 hover:to-slate-600 disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+          >
+            Set as Guest
           </button>
 
           <button
@@ -130,8 +155,8 @@ export default function FixRolePage() {
         <div className="mt-6 bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
           <p className="text-blue-300 text-sm">
             <strong>Note:</strong> After setting your role, the page will
-            refresh and you'll be redirected to the dashboard where you can
-            add/edit members.
+            refresh and you'll be redirected to the dashboard. If you need an
+            agency assignment, please contact your administrator.
           </p>
         </div>
       </div>
