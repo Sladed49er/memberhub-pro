@@ -402,11 +402,12 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="A1_AGENCY">A1 Agency</SelectItem>
-                    <SelectItem value="A2_AGENCY">A2 Agency</SelectItem>
-                    <SelectItem value="A3_AGENCY">A3 Agency</SelectItem>
-                    <SelectItem value="A4_AGENCY">A4 Agency</SelectItem>
-                    <SelectItem value="A5_AGENCY">A5 Agency</SelectItem>
+                    <SelectItem value="A1_AGENCY">A1 - Agency</SelectItem>
+                    <SelectItem value="A2_BRANCH">A2 - Branch</SelectItem>
+                    <SelectItem value="A3_ASSOCIATE">A3 - Associate</SelectItem>
+                    <SelectItem value="STERLING_PARTNER">
+                      Sterling Partner
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -436,7 +437,15 @@ export default function AgencyForm({ agency, mode }: AgencyFormProps) {
               <div>
                 <Label>Membership Type (Read-only)</Label>
                 <div className="p-2 bg-gray-100 rounded-md border">
-                  {formData.membershipType.replace("_", " ")}
+                  {formData.membershipType === "A1_AGENCY"
+                    ? "A1 - Agency"
+                    : formData.membershipType === "A2_BRANCH"
+                    ? "A2 - Branch"
+                    : formData.membershipType === "A3_ASSOCIATE"
+                    ? "A3 - Associate"
+                    : formData.membershipType === "STERLING_PARTNER"
+                    ? "Sterling Partner"
+                    : formData.membershipType}
                 </div>
               </div>
 

@@ -109,6 +109,20 @@ export async function POST(request: NextRequest) {
     else if (body.status === "INACTIVE") membershipStatus = "INACTIVE";
     else if (body.status === "SUSPENDED") membershipStatus = "SUSPENDED";
 
+    // Map the membership type - ensure it's a valid enum value or null
+    let membershipType = null;
+    if (body.membershipType) {
+      const validTypes = [
+        "A1_AGENCY",
+        "A2_BRANCH",
+        "A3_ASSOCIATE",
+        "STERLING_PARTNER",
+      ];
+      if (validTypes.includes(body.membershipType)) {
+        membershipType = body.membershipType;
+      }
+    }
+
     // Create the agency with fields that match your Prisma schema
     const newAgency = await prisma.agency.create({
       data: {
@@ -121,7 +135,7 @@ export async function POST(request: NextRequest) {
         zipCode: body.zipCode || null,
         country: body.country || "USA",
         website: body.website || null,
-        membershipType: body.membershipType || null,
+        membershipType: membershipType,
         membershipLevel: body.membershipLevel || null,
         primaryContactName: body.primaryContactName || null,
         primaryContactEmail: body.primaryContactEmail || null,
