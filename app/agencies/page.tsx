@@ -1,6 +1,5 @@
 // app/agencies/page.tsx
-import { auth } from "@clerk/nextjs/server";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -14,42 +13,39 @@ import {
   MapPin,
   Users,
 } from "lucide-react";
-import { prisma } from "@/lib/prisma";
+import { headers as nextHeaders } from "next/headers";
 
 async function getAgencies(userRole: string, agencyId?: string) {
   try {
-    let agencies: any[] = [];
+    // headers() is async on newer Next versions
+    const h = await nextHeaders();
 
-    if (userRole === "SUPER_ADMIN") {
-      // Super Admins can see all agencies - fetch directly from database
-      agencies = await prisma.agency.findMany({
-        include: {
-          _count: {
-            select: { users: true },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-    } else if (
-      (userRole === "ADMIN" || userRole === "AGENCY_ADMIN") &&
-      agencyId
-    ) {
-      // Agency Admins can only see their own agency
-      agencies = await prisma.agency.findMany({
-        where: {
-          id: agencyId,
-        },
-        include: {
-          _count: {
-            select: { users: true },
-          },
-        },
-      });
+    // Be proxy aware in production (Vercel, NGINX, etc.)
+    const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+
+    const protocol =
+      h.get("x-forwarded-proto") ??
+      (process.env.NODE_ENV === "production" ? "https" : "http");
+
+    const baseUrl = `${protocol}://${host}`;
+
+    const response = await fetch(`${baseUrl}/api/agencies`, {
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      console.error("API response not OK:", response.status);
+      return [];
     }
 
-    console.log("Agencies fetched:", agencies.length);
+    const agencies = await response.json();
+
+    // For Agency Admins, filter to only their agency
+    if ((userRole === "ADMIN" || userRole === "AGENCY_ADMIN") && agencyId) {
+      return agencies.filter((agency: any) => agency.id === agencyId);
+    }
+
     return agencies;
   } catch (error) {
     console.error("Error fetching agencies:", error);
@@ -66,10 +62,7 @@ export default async function AgenciesPage() {
   const userAgencyId = user?.unsafeMetadata?.agencyId as string;
   const userAgencyName = user?.unsafeMetadata?.agencyName as string;
 
-  console.log("User role:", userRole);
-  console.log("User agency ID:", userAgencyId);
-
-  // Regular members shouldn't access this page
+  // Regular members should not access this page
   if (userRole === "STANDARD" || userRole === "GUEST" || !userRole) {
     redirect("/dashboard");
   }
@@ -239,9 +232,7 @@ export default async function AgenciesPage() {
                           try {
                             const response = await fetch(
                               `/api/agencies/${agency.id}`,
-                              {
-                                method: "DELETE",
-                              }
+                              { method: "DELETE" }
                             );
                             if (response.ok) {
                               window.location.reload();
@@ -252,7 +243,7 @@ export default async function AgenciesPage() {
                                   "Cannot delete agency with existing members"
                               );
                             }
-                          } catch (error) {
+                          } catch {
                             alert("Failed to delete agency");
                           }
                         }
