@@ -1,5 +1,5 @@
 // app/agencies/page.tsx
-// Enhanced version with debugging to fix display issue
+// Simplified version without alert dialog for testing
 
 "use client";
 
@@ -8,16 +8,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useUser } from "@clerk/nextjs";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 interface Agency {
   id: string;
@@ -44,7 +34,6 @@ export default function AgenciesPage() {
   const [agencies, setAgencies] = useState<Agency[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<any>(null);
 
   const userRole = user?.unsafeMetadata?.role as string;
@@ -111,11 +100,18 @@ export default function AgenciesPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteId) return;
+  const handleDelete = async (id: string) => {
+    // Simple confirmation without alert dialog
+    if (
+      !confirm(
+        "Are you sure you want to delete this agency? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
 
     try {
-      const response = await fetch(`/api/agencies/${deleteId}`, {
+      const response = await fetch(`/api/agencies/${id}`, {
         method: "DELETE",
       });
 
@@ -126,7 +122,6 @@ export default function AgenciesPage() {
 
       // Refresh the list
       await fetchAgencies();
-      setDeleteId(null);
     } catch (err) {
       console.error("Error deleting agency:", err);
       alert(err instanceof Error ? err.message : "Failed to delete agency");
@@ -153,9 +148,9 @@ export default function AgenciesPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+    <div className="px-4 py-8">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
           All Agencies
         </h1>
         {canManageAgencies && (
@@ -194,69 +189,93 @@ export default function AgenciesPage() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
         </div>
       ) : agencies.length === 0 ? (
-        <div className="bg-gray-50 rounded-lg p-8 text-center">
-          <p className="text-gray-600 mb-4">No agencies found.</p>
-          {canManageAgencies && (
-            <Link href="/agencies/new">
-              <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white">
-                Create First Agency
-              </Button>
-            </Link>
-          )}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-xl p-12 text-center border border-purple-100">
+          <div className="max-w-md mx-auto">
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400 mb-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+              />
+            </svg>
+            <p className="text-gray-600 mb-6">No agencies found.</p>
+            {canManageAgencies && (
+              <Link href="/agencies/new">
+                <Button className="bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700">
+                  Create First Agency
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-xl overflow-hidden border border-purple-100">
+          <table className="min-w-full divide-y divide-purple-100">
+            <thead className="bg-gradient-to-r from-purple-50 to-pink-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Agency Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Email
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Phone
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   City, State
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Membership
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-purple-50">
               {agencies.map((agency) => (
-                <tr key={agency.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {agency.name}
+                <tr
+                  key={agency.id}
+                  className="hover:bg-purple-50/50 transition-colors"
+                >
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-semibold text-gray-900">
+                      {agency.name}
+                    </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {agency.email}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-600">{agency.email}</div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {agency.phone || "-"}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-600">
+                      {agency.phone || "-"}
+                    </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {agency.city && agency.state
-                      ? `${agency.city}, ${agency.state}`
-                      : "-"}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-600">
+                      {agency.city && agency.state
+                        ? `${agency.city}, ${agency.state}`
+                        : "-"}
+                    </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="px-3 py-1 text-xs font-medium rounded-full bg-gradient-to-r from-purple-100 to-pink-100 text-purple-800">
                       {agency.membershipType?.replace(/_/g, " ") || "Not Set"}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                  <td className="px-6 py-4 whitespace-nowrap">
                     <span
-                      className={`px-2 py-1 text-xs rounded-full ${
+                      className={`px-3 py-1 text-xs font-medium rounded-full ${
                         agency.status === "ACTIVE"
                           ? "bg-green-100 text-green-800"
                           : agency.status === "PENDING"
@@ -269,25 +288,33 @@ export default function AgenciesPage() {
                       {agency.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex space-x-2">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center space-x-2">
                       <Link href={`/agencies/${agency.id}`}>
-                        <Button variant="outline" size="sm">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                        >
                           View
                         </Button>
                       </Link>
                       {canManageAgencies && (
                         <>
                           <Link href={`/agencies/${agency.id}/edit`}>
-                            <Button variant="outline" size="sm">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
                               Edit
                             </Button>
                           </Link>
                           <Button
-                            variant="outline"
+                            variant="ghost"
                             size="sm"
-                            onClick={() => setDeleteId(agency.id)}
-                            className="text-red-600 hover:text-red-700"
+                            onClick={() => handleDelete(agency.id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
                             Delete
                           </Button>
@@ -301,28 +328,6 @@ export default function AgenciesPage() {
           </table>
         </div>
       )}
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete this agency and all associated
-              members. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-red-600 hover:bg-red-700"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
