@@ -1,15 +1,19 @@
 // app/api/agencies/[id]/route.ts
+// API routes for individual agency operations
+
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
+// GET - Fetch single agency
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     const { userId } = await auth();
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -18,19 +22,23 @@ export async function GET(
     const userRole = user?.unsafeMetadata?.role as string;
     const userAgencyId = user?.unsafeMetadata?.agencyId as string;
 
-    const { id } = await params;
+    // Check permissions
+    if (userRole !== "SUPER_ADMIN" && userRole !== "ADMIN") {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
+    }
 
     // Agency Admins can only view their own agency
-    if (userRole === "AGENCY_ADMIN" && id !== userAgencyId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (userRole === "ADMIN" && userAgencyId !== params.id) {
+      return NextResponse.json({ error: "Access denied" }, { status: 403 });
     }
 
     const agency = await prisma.agency.findUnique({
-      where: { id },
+      where: { id: params.id },
       include: {
-        _count: {
-          select: { users: true },
-        },
+        users: true, // Include associated users
       },
     });
 
@@ -42,18 +50,21 @@ export async function GET(
   } catch (error) {
     console.error("Error fetching agency:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to fetch agency" },
       { status: 500 }
     );
   }
 }
 
+// PUT - Update agency
 export async function PUT(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     const { userId } = await auth();
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -62,64 +73,71 @@ export async function PUT(
     const userRole = user?.unsafeMetadata?.role as string;
     const userAgencyId = user?.unsafeMetadata?.agencyId as string;
 
-    const { id } = await params;
+    // Check permissions
+    const canEdit =
+      userRole === "SUPER_ADMIN" ||
+      (userRole === "ADMIN" && userAgencyId === params.id);
 
-    // Agency Admins can only edit their own agency
-    if (userRole === "AGENCY_ADMIN" && id !== userAgencyId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!canEdit) {
+      return NextResponse.json(
+        { error: "Insufficient permissions" },
+        { status: 403 }
+      );
     }
 
     const body = await request.json();
 
-    // For Agency Admins, filter out fields they cannot modify
-    if (userRole === "AGENCY_ADMIN") {
-      delete body.membershipType;
-      delete body.status;
-      // Ensure they can't modify these critical fields
-      delete body.id;
-      delete body.createdAt;
-      delete body.updatedAt;
+    // Format the primary contact name
+    const primaryContactName =
+      body.primaryContactFirstName && body.primaryContactLastName
+        ? `${body.primaryContactFirstName} ${body.primaryContactLastName}`
+        : body.primaryContactName || null;
+
+    // Prepare update data
+    let updateData: any = {
+      name: body.name,
+      email: body.email,
+      phone: body.phone || null,
+      address: body.address || null,
+      city: body.city || null,
+      state: body.state || null,
+      zipCode: body.zipCode || null,
+      website: body.website || null,
+      primaryContactName: primaryContactName,
+      primaryContactEmail: body.primaryContactEmail || null,
+      primaryContactPhone: body.primaryContactPhone || null,
+    };
+
+    // Only Super Admins can change membership type and status
+    if (userRole === "SUPER_ADMIN") {
+      updateData.membershipType = body.membershipType || null;
+      updateData.status = body.status || "PENDING";
     }
 
-    // Validate that required fields are present
-    if (!body.name || !body.email) {
-      return NextResponse.json(
-        { error: "Name and email are required" },
-        { status: 400 }
-      );
-    }
-
-    const updatedAgency = await prisma.agency.update({
-      where: { id },
-      data: {
-        name: body.name,
-        address: body.address,
-        phone: body.phone,
-        email: body.email,
-        // Only include these if user is Super Admin
-        ...(userRole === "SUPER_ADMIN" && {
-          membershipType: body.membershipType,
-          status: body.status,
-        }),
-      },
+    const agency = await prisma.agency.update({
+      where: { id: params.id },
+      data: updateData,
     });
 
-    return NextResponse.json(updatedAgency);
+    return NextResponse.json(agency);
   } catch (error) {
     console.error("Error updating agency:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to update agency" },
       { status: 500 }
     );
   }
 }
 
+// DELETE - Delete agency
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     const { userId } = await auth();
+
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -127,34 +145,30 @@ export async function DELETE(
     const user = await currentUser();
     const userRole = user?.unsafeMetadata?.role as string;
 
-    // Only Super Admins can delete agencies
+    // Only Super Admin can delete agencies
     if (userRole !== "SUPER_ADMIN") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    const { id } = await params;
-
-    // Check if agency has members
-    const memberCount = await prisma.user.count({
-      where: { agencyId: id },
-    });
-
-    if (memberCount > 0) {
       return NextResponse.json(
-        { error: "Cannot delete agency with existing members" },
-        { status: 400 }
+        { error: "Only Super Admins can delete agencies" },
+        { status: 403 }
       );
     }
 
-    const deletedAgency = await prisma.agency.delete({
-      where: { id },
+    // First, disassociate all users from this agency
+    await prisma.user.updateMany({
+      where: { agencyId: params.id },
+      data: { agencyId: null },
     });
 
-    return NextResponse.json({ success: true });
+    // Then delete the agency
+    await prisma.agency.delete({
+      where: { id: params.id },
+    });
+
+    return NextResponse.json({ message: "Agency deleted successfully" });
   } catch (error) {
     console.error("Error deleting agency:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Failed to delete agency" },
       { status: 500 }
     );
   }
